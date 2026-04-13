@@ -1,0 +1,6 @@
+* { box-sizing: border-box; }
+
+::view-transition-group(terminal-pane) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
