@@ -25,34 +25,35 @@ function spawnChild(name: string, cwd: string): ChildProcess {
   return child;
 }
 
-function isPortOpen(port: number, host = "127.0.0.1"): Promise<boolean> {
+function probeHost(port: number, host: string, timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {
     const s = net.createConnection({ port, host });
     const done = (ok: boolean) => { s.removeAllListeners(); s.destroy(); resolve(ok); };
-    s.setTimeout(500);
+    s.setTimeout(timeoutMs);
     s.once("connect", () => done(true));
     s.once("error", () => done(false));
     s.once("timeout", () => done(false));
   });
 }
 
-function waitForPort(port: number, host = "127.0.0.1", timeoutMs = 60_000): Promise<void> {
+async function isPortOpen(port: number): Promise<boolean> {
+  // Vite may bind only to the IPv6 loopback (::1). Checking both families
+  // avoids false negatives that cause us to spawn a second Vite, hit
+  // strictPort, and crash-loop.
+  const [v4, v6] = await Promise.all([
+    probeHost(port, "127.0.0.1"),
+    probeHost(port, "::1"),
+  ]);
+  return v4 || v6;
+}
+
+function waitForPort(port: number, timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
-    const tryConnect = () => {
-      const s = net.createConnection({ port, host });
-      s.once("connect", () => {
-        s.destroy();
-        resolve();
-      });
-      s.once("error", () => {
-        s.destroy();
-        if (Date.now() > deadline) {
-          reject(new Error(`timeout waiting for ${host}:${port}`));
-          return;
-        }
-        setTimeout(tryConnect, 300);
-      });
+    const tryConnect = async () => {
+      if (await isPortOpen(port)) return resolve();
+      if (Date.now() > deadline) return reject(new Error(`timeout waiting for :${port}`));
+      setTimeout(tryConnect, 300);
     };
     tryConnect();
   });
@@ -107,6 +108,13 @@ app.whenReady().then(async () => {
     } catch (err) {
       console.error("[electron] services did not come up:", err);
     }
+  }
+
+  // Final guard: if something else is squatting on the vite port and our
+  // child crashed instead of binding, surface the problem in-window rather
+  // than showing a blank page.
+  if (!(await isPortOpen(VITE_PORT))) {
+    console.error(`[electron] nothing is serving :${VITE_PORT}; check your yarn dev / free the port`);
   }
 
   await createWindow();
