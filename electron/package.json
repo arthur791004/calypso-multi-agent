@@ -1,0 +1,15 @@
+{
+  "name": "electron-app",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "electron": "^32.2.0",
+    "typescript": "^5.5.3"
+  }
+}

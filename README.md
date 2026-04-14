@@ -84,6 +84,14 @@ npm run dev
 
 This launches both the backend (`:9090`) and frontend (`:9091`) via `npm-run-all`. Open <http://localhost:9091> and click **Settings** on first run to pick your repo folder — the tool symlinks it to `.config/repo/<repo_name>/<default_branch>` (no clone; `<repo_name>` is the basename of the picked folder, `<default_branch>` is detected from `origin/HEAD`) and starts trunk automatically. Per-branch worktrees land as siblings at `.config/repo/<repo_name>/<branch>`.
 
+### Run as a desktop app (Electron)
+
+```bash
+npm run electron:dev
+```
+
+Compiles the Electron main process and opens a native window pointing at the frontend. If `yarn dev` is already running on `:9090`/`:9091`, Electron attaches to those servers instead of spawning duplicates; otherwise it launches backend + vite as child processes for the lifetime of the window, and shuts them down on quit. This is a dev skeleton — there's no packaged `.app`/`.dmg` target yet.
+
 ## Project layout
 
 ```
@@ -103,11 +111,15 @@ backend/
 frontend/
   src/
     App.tsx           # Branch table, Create modal, split layout
-    TerminalModal.tsx # xterm panel + Claude/Terminal tabs
-    SettingsModal.tsx # Choose folder + save
+    TerminalModal.tsx # xterm panel + Claude/Terminal/Logs tabs
+    SettingsModal.tsx # Choose folder + dashboard commands
     Toaster.tsx       # Chakra v3 toaster host
     api.ts            # API types + fetch wrappers
     main.tsx          # ChakraProvider + next-themes dark mode
+
+electron/
+  src/
+    main.ts           # BrowserWindow + spawns/attaches to backend & vite
 ```
 
 ## Notable design decisions
