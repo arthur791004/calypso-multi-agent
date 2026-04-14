@@ -22,17 +22,33 @@ export function TerminalModal({ branch, kind, fullscreen, onFullscreenToggle, on
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const readOnly = kind === "logs";
     const term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: !readOnly,
+      disableStdin: readOnly,
       fontSize: 13,
       fontFamily: "ui-monospace, Menlo, monospace",
       theme: { background: "#0a0c10", foreground: "#e6e8eb" },
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
-    term.open(containerRef.current);
+    const container = containerRef.current;
+    term.open(container);
     fit.fit();
     term.focus();
+
+    const refocus = () => term.focus();
+    container.addEventListener("mousedown", refocus);
+
+    const onPaste = (ev: ClipboardEvent) => {
+      if (readOnly) return;
+      if (!container.contains(document.activeElement) && document.activeElement !== document.body) return;
+      const text = ev.clipboardData?.getData("text");
+      if (!text) return;
+      ev.preventDefault();
+      term.paste(text);
+    };
+    window.addEventListener("paste", onPaste);
 
     const wsProto = window.location.protocol === "https:" ? "wss" : "ws";
     const wsKind = kind === "logs" ? "dashboard" : kind;
@@ -46,9 +62,11 @@ export function TerminalModal({ branch, kind, fullscreen, onFullscreenToggle, on
     ws.onmessage = (e) => term.write(typeof e.data === "string" ? e.data : "");
     ws.onclose = () => term.write("\r\n[connection closed]\r\n");
 
-    const disposable = term.onData((d) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(d);
-    });
+    const disposable = readOnly
+      ? { dispose: () => {} }
+      : term.onData((d) => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(d);
+        });
 
     const onResize = () => {
       try { fit.fit(); } catch {}
@@ -62,6 +80,8 @@ export function TerminalModal({ branch, kind, fullscreen, onFullscreenToggle, on
 
     return () => {
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("paste", onPaste);
+      container.removeEventListener("mousedown", refocus);
       ro.disconnect();
       disposable.dispose();
       ws.close();

@@ -223,7 +223,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         status: "stopped",
         createdAt: 1,
       }));
+    function rank(b: Branch): number {
+      if (isTrunk(b)) return 0;
+      if (b.id.startsWith("git:")) return 3;
+      if (b.status === "running" || b.status === "starting" || b.status === "creating") return 1;
+      return 2;
+    }
     const merged = [...stateBranches, ...stubs].sort((a, b) => {
+      const d = rank(a) - rank(b);
+      if (d !== 0) return d;
       if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
       return a.name.localeCompare(b.name);
     });
