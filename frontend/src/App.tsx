@@ -13,6 +13,7 @@ import {
   Input,
   NativeSelect,
   Portal,
+  Spinner,
   Stack,
   Table,
   Text,
@@ -24,10 +25,12 @@ import { api, Branch, Repo, Settings } from "./api";
 import { SettingsModal } from "./SettingsModal";
 import { TerminalModal, TerminalKind } from "./TerminalModal";
 import { RepoSwitcher } from "./RepoSwitcher";
+import { Welcome } from "./Welcome";
 import { toaster } from "./Toaster";
 
 export function App() {
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
   const [activeId, setActiveId] = useState<string | undefined>();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
@@ -62,8 +65,6 @@ export function App() {
     []
   );
 
-  const openSettings = settingsDisclosure.onOpen;
-
   const refreshRepos = useCallback(async () => {
     const res = await api.listRepos();
     setRepos(res.repos);
@@ -77,14 +78,14 @@ export function App() {
       setSettings(s);
       setRepos(repoRes.repos);
       setActiveRepoId(repoRes.activeRepoId);
-      if (repoRes.repos.length === 0) openSettings();
     })();
-  }, [openSettings]);
+  }, []);
 
   const refresh = useCallback(async () => {
     const res = await api.list();
     setBranches(res.branches);
     setActiveId(res.activeBranchId);
+    setBranchesLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -173,6 +174,17 @@ export function App() {
     });
   }
 
+  if (settings && repos.length === 0) {
+    return (
+      <Welcome
+        onDone={async () => {
+          await refreshRepos();
+          await refresh();
+        }}
+      />
+    );
+  }
+
   return (
     <Flex w="100vw" h="100vh" overflow="hidden" direction="row">
       <Box
@@ -204,6 +216,8 @@ export function App() {
               repos={repos}
               activeRepoId={activeRepoId}
               onChanged={async () => {
+                setBranchesLoaded(false);
+                setBranches([]);
                 await refreshRepos();
                 await refresh();
               }}
@@ -224,7 +238,21 @@ export function App() {
           </HStack>
         </Flex>
 
-        {branches.length === 0 ? (
+        {!branchesLoaded ? (
+          <Box
+            p={10}
+            textAlign="center"
+            color="gray.500"
+            borderWidth={1}
+            borderColor="gray.700"
+            borderRadius="md"
+          >
+            <HStack justify="center" gap={3}>
+              <Spinner size="sm" />
+              <Text>Loading branches…</Text>
+            </HStack>
+          </Box>
+        ) : branches.length === 0 ? (
           <Box p={10} textAlign="center" color="gray.400" borderWidth={1} borderColor="gray.700" borderRadius="md">
             No branches yet. Click "Create branch" to start.
           </Box>
@@ -364,7 +392,7 @@ export function App() {
           try {
             const picked = await api.pickFolder();
             if (!picked) return;
-            await api.addRepo(picked.path);
+            await api.addRepo({ linkTarget: picked.path });
             await refreshRepos();
             await refresh();
             settingsDisclosure.onClose();

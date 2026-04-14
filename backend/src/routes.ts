@@ -66,6 +66,30 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { ...settings, configured: listRepos().length > 0 };
   });
 
+  app.get("/api/system-check", async () => {
+    async function check(cmd: string, args: string[]): Promise<{ ok: boolean; detail: string }> {
+      const res = await run(cmd, args).catch((err) => ({ code: 1, stdout: "", stderr: err?.message || "" }));
+      const text = (res.stdout || res.stderr || "").trim().split("\n")[0] ?? "";
+      return { ok: res.code === 0, detail: text };
+    }
+    const [node, docker, dockerSandbox, gh, claude] = await Promise.all([
+      Promise.resolve({ ok: true, detail: process.version }),
+      check("docker", ["--version"]),
+      check("docker", ["sandbox", "ls"]),
+      check("/bin/sh", ["-lc", "gh --version | head -n1"]),
+      check("/bin/sh", ["-lc", "command -v claude && claude --version 2>/dev/null | head -n1 || echo found"]),
+    ]);
+    return {
+      checks: [
+        { name: "Node runtime", required: true, ...node },
+        { name: "Docker CLI", required: true, ...docker },
+        { name: "docker sandbox plugin", required: true, ...dockerSandbox },
+        { name: "GitHub `gh` CLI", required: false, ...gh },
+        { name: "Claude CLI (host)", required: false, ...claude },
+      ],
+    };
+  });
+
   app.put<{ Body: Partial<{ repoUrl: string; configured: boolean }> }>(
     "/api/settings",
     async (req) => {
@@ -78,8 +102,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return { repos, activeRepoId: getActiveRepo()?.id };
   });
 
-  app.post<{ Body: { linkTarget: string } }>("/api/repos", async (req, reply) => {
-    const { linkTarget } = req.body ?? ({} as any);
+  app.post<{
+    Body: { linkTarget: string; dashboardInstallCmd?: string; dashboardStartCmd?: string };
+  }>("/api/repos", async (req, reply) => {
+    const { linkTarget, dashboardInstallCmd, dashboardStartCmd } = req.body ?? ({} as any);
     if (!linkTarget) return reply.code(400).send({ error: "linkTarget required" });
 
     const cleaned = linkTarget.replace(/\/+$/, "");
@@ -106,6 +132,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       repoPath,
       worktreesDir,
       defaultBranch,
+      dashboardInstallCmd: dashboardInstallCmd?.trim() || undefined,
+      dashboardStartCmd: dashboardStartCmd?.trim() || undefined,
       createdAt: Date.now(),
     };
     await addRepo(repo, true);

@@ -39,7 +39,7 @@ export function RepoSwitcher({ repos, activeRepoId, onChanged }: Props) {
     try {
       const picked = await api.pickFolder();
       if (!picked) return;
-      await api.addRepo(picked.path);
+      await api.addRepo({ linkTarget: picked.path });
       onChanged();
     } catch (e: any) {
       toaster.create({ type: "error", title: e.message, duration: 6000 });

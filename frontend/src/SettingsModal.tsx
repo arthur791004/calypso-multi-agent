@@ -99,7 +99,7 @@ export function SettingsModal({ open, activeRepo, firstRun, onClose, onAddRepo, 
                     </Stack>
                     <Field.Root>
                       <Field.Label fontSize="xs" color="gray.400">
-                        Dashboard install command
+                        Install command
                       </Field.Label>
                       <Input
                         placeholder="yarn install"
@@ -113,7 +113,7 @@ export function SettingsModal({ open, activeRepo, firstRun, onClose, onAddRepo, 
                     </Field.Root>
                     <Field.Root>
                       <Field.Label fontSize="xs" color="gray.400">
-                        Dashboard start command
+                        Start command
                       </Field.Label>
                       <Input
                         placeholder="yarn start-dashboard"

@@ -35,8 +35,16 @@ export interface Settings {
   configured: boolean;
 }
 
+export interface SystemCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+  required: boolean;
+}
+
 export const api = {
   getSettings: () => fetch("/api/settings").then(j<Settings>),
+  systemCheck: () => fetch("/api/system-check").then(j<{ checks: SystemCheck[] }>),
   saveSettings: (body: Partial<Settings>) =>
     fetch("/api/settings", {
       method: "PUT",
@@ -51,11 +59,11 @@ export const api = {
   },
   listRepos: () =>
     fetch("/api/repos").then(j<{ repos: Repo[]; activeRepoId?: string }>),
-  addRepo: (linkTarget: string) =>
+  addRepo: (body: { linkTarget: string; dashboardInstallCmd?: string; dashboardStartCmd?: string }) =>
     fetch("/api/repos", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ linkTarget }),
+      body: JSON.stringify(body),
     }).then(j<{ repo: Repo; activeRepoId: string }>),
   updateRepo: (id: string, body: Partial<Pick<Repo, "dashboardInstallCmd" | "dashboardStartCmd">>) =>
     fetch(`/api/repos/${id}`, {
