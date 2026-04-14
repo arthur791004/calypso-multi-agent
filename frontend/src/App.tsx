@@ -564,7 +564,7 @@ function BranchRow({
         <HStack gap={2}>
           <Button
             size="xs"
-            disabled={busy || !running || (!b.sandboxName && b.id !== "trunk")}
+            disabled={busy || !running || (!b.sandboxName && !b.isTrunk)}
             colorPalette="gray"
             variant={openTerminalKind ? "solid" : "outline"}
             onClick={() => onOpenTerminal("claude")}
@@ -592,7 +592,7 @@ function BranchRow({
         </HStack>
       </Table.Cell>
       <Table.Cell>
-        {b.id !== "trunk" && (
+        {!b.isTrunk && (
           <HStack gap={2}>
             {running ? (
               <Button size="xs" variant="outline" disabled={busy} loading={p === "stopping"} onClick={() => onToggle(b)}>

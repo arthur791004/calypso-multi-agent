@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import pty, { IPty } from "node-pty";
 import { getBranch, isTrunk } from "./state.js";
-import { attachSandbox, resolveDockerPath } from "./docker.js";
+import { attachSandbox, reattachSandbox, resolveDockerPath } from "./docker.js";
 import { attachSharedPty, ensureSharedPty } from "./sharedPty.js";
 import { dashboardKey } from "./dashboard.js";
 
@@ -9,7 +9,7 @@ export async function registerTerminal(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { id: string }; Querystring: { kind?: string } }>(
     "/api/branches/:id/terminal",
     { websocket: true },
-    (socket, req) => {
+    async (socket, req) => {
       const branch = getBranch(req.params.id);
       if (!branch || !branch.worktreePath) {
         try {
@@ -95,9 +95,16 @@ export async function registerTerminal(app: FastifyInstance): Promise<void> {
       }
 
       if (kind === "claude") {
-        const handle = attachSandbox(branch.sandboxName, (data) => {
+        const onData = (data: string) => {
           try { socket.send(data); } catch {}
-        });
+        };
+        let handle = attachSandbox(branch.sandboxName, onData);
+        if (!handle) {
+          // Our pty bookkeeping has nothing, but docker may still have the
+          // sandbox running — reattach without clobbering in-container state.
+          const ok = await reattachSandbox(branch.sandboxName, branch.worktreePath, branch.port);
+          if (ok) handle = attachSandbox(branch.sandboxName, onData);
+        }
         if (!handle) {
           try {
             socket.send("\r\n[sandbox not running — start the branch first]\r\n");

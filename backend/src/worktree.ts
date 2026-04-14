@@ -102,6 +102,7 @@ export async function removeWorktree(worktreePath: string): Promise<void> {
   const repo = getActiveRepo();
   if (repo) {
     await run("git", ["-C", repo.repoPath, "worktree", "remove", "--force", worktreePath]);
+    await run("git", ["-C", repo.repoPath, "worktree", "prune"]);
   }
   await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {});
 }

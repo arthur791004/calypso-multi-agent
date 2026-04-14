@@ -42,13 +42,25 @@ export function TerminalModal({ branch, kind, fullscreen, onFullscreenToggle, on
 
     const onPaste = (ev: ClipboardEvent) => {
       if (readOnly) return;
-      if (!container.contains(document.activeElement) && document.activeElement !== document.body) return;
+      // Skip if the paste is targeting a real text input outside the terminal
+      // (e.g. the Add Branch name field) — we don't want to steal from those.
+      const active = document.activeElement;
+      const isExternalInput =
+        (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) &&
+        !container.contains(active);
+      if (isExternalInput) return;
       const text = ev.clipboardData?.getData("text");
       if (!text) return;
       ev.preventDefault();
-      term.paste(text);
+      ev.stopPropagation();
+      term.focus();
+      if (ws.readyState === WebSocket.OPEN) {
+        // Write straight to the pty, wrapping in bracketed-paste markers so
+        // Claude / shells treat it as a single paste rather than keystrokes.
+        ws.send(`\x1b[200~${text}\x1b[201~`);
+      }
     };
-    window.addEventListener("paste", onPaste);
+    window.addEventListener("paste", onPaste, true);
 
     const wsProto = window.location.protocol === "https:" ? "wss" : "ws";
     const wsKind = kind === "logs" ? "dashboard" : kind;
@@ -80,7 +92,7 @@ export function TerminalModal({ branch, kind, fullscreen, onFullscreenToggle, on
 
     return () => {
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("paste", onPaste, true);
       container.removeEventListener("mousedown", refocus);
       ro.disconnect();
       disposable.dispose();

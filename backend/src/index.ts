@@ -16,11 +16,14 @@ import {
 } from "./state.js";
 import { registerRoutes } from "./routes.js";
 import { registerTerminal } from "./terminal.js";
-import { startSandbox } from "./docker.js";
+import { reconcileSandboxState, startSandbox } from "./docker.js";
 import { ensureDashboardRunning } from "./dashboard.js";
 
 async function main() {
   await loadState();
+  await reconcileSandboxState().catch((err) =>
+    console.error("reconcileSandboxState on boot failed:", err)
+  );
 
   const activeRepo = getActiveRepo();
   if (activeRepo) {

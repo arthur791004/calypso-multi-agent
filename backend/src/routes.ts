@@ -450,6 +450,32 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       const activeRepo = getActiveRepo();
       if (!activeRepo) return reply.code(400).send({ error: "no active repo" });
       try {
+        // Find any worktrees referencing this branch and remove them before
+        // `branch -D`, which refuses to drop a ref that's still checked out.
+        const list = await run("git", [
+          "-C",
+          activeRepo.repoPath,
+          "worktree",
+          "list",
+          "--porcelain",
+        ]);
+        if (list.code === 0) {
+          const blocks = list.stdout.split(/\n\n+/);
+          const targets: string[] = [];
+          for (const block of blocks) {
+            const lines = block.split("\n");
+            const worktreeLine = lines.find((l) => l.startsWith("worktree "));
+            const branchLine = lines.find((l) => l.startsWith("branch "));
+            if (!worktreeLine || !branchLine) continue;
+            const wtPath = worktreeLine.slice("worktree ".length).trim();
+            const ref = branchLine.slice("branch ".length).trim();
+            if (ref === `refs/heads/${name}`) targets.push(wtPath);
+          }
+          for (const wt of targets) {
+            await run("git", ["-C", activeRepo.repoPath, "worktree", "remove", "--force", wt]);
+          }
+        }
+        await run("git", ["-C", activeRepo.repoPath, "worktree", "prune"]);
         await runOrThrow("git", ["-C", activeRepo.repoPath, "branch", "-D", name]);
         return { ok: true };
       } catch (err: any) {
