@@ -258,58 +258,80 @@ export async function syncCredentialsIn(name: string): Promise<void> {
 }
 
 async function buildClaudeConfig(worktreePath?: string): Promise<string> {
-  const projectOverrides = worktreePath
-    ? {
-        [worktreePath]: {
-          allowedTools: [],
-          hasTrustDialogAccepted: true,
-          hasClaudeMdExternalIncludesApproved: true,
-          hasClaudeMdExternalIncludesWarningShown: true,
-          projectOnboardingSeenCount: 1,
-        },
-      }
-    : {};
+  // Two sources:
+  //  1. Shared mount file — permissions, MCP approvals, settings from
+  //     previous sandbox sessions. This is the primary config. The first
+  //     sandbox starts with a minimal config; the user configures
+  //     permissions interactively; on exit it's saved to the mount. All
+  //     subsequent sandboxes inherit it.
+  //  2. Host ~/.claude.json — ONLY auth identity fields (oauthAccount,
+  //     userID, anonymousId). We do NOT copy the host's permissions,
+  //     allowedTools, or MCP approvals so the sandbox can be configured
+  //     independently.
+
+  // Auth fields from host
+  let authFields: Record<string, unknown> = {};
   try {
-    const raw = await fsp.readFile(path.join(os.homedir(), ".claude.json"), "utf8");
-    const full = JSON.parse(raw);
-    // Copy the full host config so all MCP server approvals, tool
-    // permissions, model preferences, and settings carry over into the
-    // sandbox. Only override the fields that must differ.
-    const merged = {
-      ...full,
-      hasCompletedOnboarding: true,
-      numStartups: full.numStartups ?? 1,
-      effortCalloutDismissed: true,
-      effortCalloutV2Dismissed: true,
-      projects: {
-        ...(full.projects ?? {}),
-        ...projectOverrides,
-      },
+    const host = JSON.parse(
+      await fsp.readFile(path.join(os.homedir(), ".claude.json"), "utf8")
+    );
+    authFields = {
+      oauthAccount: host.oauthAccount,
+      userID: host.userID,
+      anonymousId: host.anonymousId,
     };
-    return JSON.stringify(merged);
-  } catch {
-    return JSON.stringify({
-      hasCompletedOnboarding: true,
-      projects: projectOverrides,
-    });
+  } catch {}
+
+  // Shared mount config (carries permissions across sandboxes)
+  let mountConfig: Record<string, unknown> = {};
+  try {
+    mountConfig = JSON.parse(
+      await fsp.readFile(MOUNT_CONFIG, "utf8")
+    );
+  } catch {}
+
+  // Build worktree project entry — inherit from any existing sandbox
+  // entry so MCP approvals carry to new worktree paths.
+  const mountProjects = (mountConfig as any).projects ?? {};
+  const worktreeOverrides: Record<string, unknown> = {};
+  if (worktreePath) {
+    let sourceEntry: Record<string, unknown> | undefined;
+    for (const entry of Object.values(mountProjects)) {
+      const e = entry as Record<string, unknown>;
+      if (Array.isArray(e?.allowedTools) && e.allowedTools.length > 0) {
+        sourceEntry = e;
+        break;
+      }
+    }
+    worktreeOverrides[worktreePath] = {
+      ...(sourceEntry ?? {}),
+      hasTrustDialogAccepted: true,
+      hasClaudeMdExternalIncludesApproved: true,
+      hasClaudeMdExternalIncludesWarningShown: true,
+      projectOnboardingSeenCount: 1,
+    };
   }
+
+  const merged = {
+    ...authFields,
+    ...mountConfig,
+    hasCompletedOnboarding: true,
+    numStartups: (mountConfig as any).numStartups ?? 1,
+    effortCalloutDismissed: true,
+    effortCalloutV2Dismissed: true,
+    projects: {
+      ...mountProjects,
+      ...worktreeOverrides,
+    },
+  };
+  return JSON.stringify(merged);
 }
 
 export async function syncClaudeConfigIn(name: string, worktreePath?: string): Promise<void> {
-  if (await fileExistsNonEmpty(config.claudeSandboxDir + "/.claude.json")) {
-    await runOrThrow(resolveDockerPath(), [
-      "sandbox",
-      "exec",
-      name,
-      "sh",
-      "-c",
-      // `-s` guard so a truncated host mount file can't clobber a good
-      // in-container one on re-sync.
-      `if [ -s ${MOUNT_CONFIG} ]; then cp -f ${MOUNT_CONFIG} ${AGENT_CONFIG} && chmod 600 ${AGENT_CONFIG}; fi`,
-    ]);
-    return;
-  }
-  const minimal = await buildClaudeConfig(worktreePath);
+  // Build a merged config: host ~/.claude.json as the base, overlaid with
+  // the shared mount file (which carries MCP approvals from previous sandbox
+  // sessions), plus a project entry for the current worktree path.
+  const configJson = await buildClaudeConfig(worktreePath);
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
       resolveDockerPath(),
@@ -330,7 +352,7 @@ export async function syncClaudeConfigIn(name: string, worktreePath?: string): P
     child.on("close", (code) =>
       code === 0 ? resolve() : reject(new Error(`syncClaudeConfigIn exit ${code}: ${stderr}`))
     );
-    child.stdin.write(minimal);
+    child.stdin.write(configJson);
     child.stdin.end();
   });
 }
