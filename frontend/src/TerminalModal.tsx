@@ -17,6 +17,7 @@ interface Props {
   onClose: () => void;
   onPreview: (b: Branch) => void;
   onOpenEditor: (b: Branch) => void;
+  onRefresh: (b: Branch) => void;
 }
 
 export function TerminalModal({
@@ -29,8 +30,10 @@ export function TerminalModal({
   onClose,
   onPreview,
   onOpenEditor,
+  onRefresh,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const terminalDisabled = !branch.isTrunk && branch.status !== "running";
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -148,7 +151,11 @@ export function TerminalModal({
           </Heading>
           <Tabs.Root
             value={kind}
-            onValueChange={(e) => onKindChange(e.value as TerminalKind)}
+            onValueChange={(e) => {
+              if (terminalDisabled) return;
+              onKindChange(e.value as TerminalKind);
+            }}
+            size="sm"
             variant="plain"
             flexShrink={0}
             css={{
@@ -157,14 +164,21 @@ export function TerminalModal({
             }}
           >
             <Tabs.List>
-              <Tabs.Trigger value="claude">Claude</Tabs.Trigger>
-              <Tabs.Trigger value="shell">Terminal</Tabs.Trigger>
-              <Tabs.Trigger value="logs">Logs</Tabs.Trigger>
+              <Tabs.Trigger value="claude" disabled={terminalDisabled}>Claude</Tabs.Trigger>
+              <Tabs.Trigger value="shell" disabled={terminalDisabled}>Terminal</Tabs.Trigger>
+              <Tabs.Trigger value="logs" disabled={terminalDisabled}>Logs</Tabs.Trigger>
               <Tabs.Indicator />
             </Tabs.List>
           </Tabs.Root>
         </HStack>
         <HStack gap={2}>
+          <IconButton
+            label="Restart sandbox"
+            onClick={() => onRefresh(branch)}
+            disabled={!branch.sandboxName || branch.isTrunk}
+          >
+            <RefreshIcon />
+          </IconButton>
           <IconButton
             label="Preview"
             onClick={() => onPreview(branch)}
@@ -211,7 +225,7 @@ export function TerminalModal({
             color={
               branch.status === "error"
                 ? "red.300"
-                : branch.status === "creating" || branch.status === "starting"
+                : branch.status === "creating" || branch.status === "starting" || branch.status === "restarting"
                 ? "blue.300"
                 : "gray.400"
             }
@@ -220,6 +234,8 @@ export function TerminalModal({
               ? "Creating sandbox…"
               : branch.status === "starting"
               ? "Starting sandbox…"
+              : branch.status === "restarting"
+              ? "Restarting sandbox…"
               : branch.status === "error"
               ? `Error${branch.error ? `: ${branch.error}` : ""}`
               : "Sandbox stopped"}
@@ -292,6 +308,17 @@ function CloseIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M6 6l12 12" />
       <path d="M6 18L18 6" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 2v6h-6" />
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M3 22v-6h6" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
     </svg>
   );
 }

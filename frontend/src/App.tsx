@@ -190,6 +190,16 @@ export function App() {
     });
   }
 
+  async function onRefreshSandbox(b: Branch) {
+    try {
+      await api.refreshSandbox(b.id);
+      await refresh();
+      toaster.create({ type: "info", title: "Sandbox restarted", duration: 2000 });
+    } catch (err: any) {
+      toaster.create({ type: "error", title: err?.message ?? "Restart failed", duration: 6000 });
+    }
+  }
+
 
   function validateCommand(text: string): string | null {
     if (!text.startsWith("/")) return "Commands must start with /";
@@ -608,10 +618,16 @@ export function App() {
         bg="gray.950"
         css={{ viewTransitionName: "terminal-pane" }}
       >
-        {terminalPanel ? (
+        {terminalPanel ? (() => {
+          // Look up the live branch from the polled branches array so
+          // status changes (restarting → running, etc.) are reflected in
+          // TerminalModal without needing to re-select the task.
+          const liveBranch =
+            branches.find((b) => b.id === terminalPanel.branch.id) ?? terminalPanel.branch;
+          return (
           <TerminalModal
-            key={`${terminalPanel.branch.id}:${terminalPanel.kind}`}
-            branch={terminalPanel.branch}
+            key={`${liveBranch.id}:${terminalPanel.kind}`}
+            branch={liveBranch}
             kind={terminalPanel.kind}
             fullscreen={terminalFullscreen}
             isMobile={isMobile}
@@ -622,8 +638,10 @@ export function App() {
             onClose={closeTerminal}
             onPreview={onPreview}
             onOpenEditor={onOpenEditor}
+            onRefresh={onRefreshSandbox}
           />
-        ) : (
+          );
+        })() : (
           <Flex h="100%" align="center" justify="center" color="gray.600" textAlign="center" px={8}>
             <Stack gap={2} align="center">
               <Text fontSize="sm">Select a branch on the left to see its terminal.</Text>

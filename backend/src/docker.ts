@@ -18,6 +18,12 @@ export function resolveDockerPath(): string {
     "/usr/local/bin/docker",
     "/opt/homebrew/bin/docker",
     "/usr/bin/docker",
+    // OrbStack
+    path.join(os.homedir(), ".orbstack/bin/docker"),
+    // Rancher Desktop
+    path.join(os.homedir(), ".rd/bin/docker"),
+    // Docker Desktop (macOS app bundle)
+    "/Applications/Docker.app/Contents/Resources/bin/docker",
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return (cachedDockerPath = c);
@@ -28,6 +34,11 @@ export function resolveDockerPath(): string {
     }).trim();
     if (out) return (cachedDockerPath = out);
   } catch {}
+  console.warn(
+    "docker not found at any known path. Tried:",
+    candidates.join(", "),
+    "and login-shell lookup. Falling back to bare 'docker' — pty.spawn will fail if it's not in PATH."
+  );
   return (cachedDockerPath = "docker");
 }
 
@@ -246,39 +257,41 @@ export async function syncCredentialsIn(name: string): Promise<void> {
   ]);
 }
 
-async function buildMinimalClaudeConfig(worktreePath?: string): Promise<string> {
-  const projectEntry = worktreePath
+async function buildClaudeConfig(worktreePath?: string): Promise<string> {
+  const projectOverrides = worktreePath
     ? {
         [worktreePath]: {
           allowedTools: [],
           hasTrustDialogAccepted: true,
+          hasClaudeMdExternalIncludesApproved: true,
+          hasClaudeMdExternalIncludesWarningShown: true,
           projectOnboardingSeenCount: 1,
-          hasClaudeMdExternalIncludesApproved: false,
-          hasClaudeMdExternalIncludesWarningShown: false,
         },
       }
     : {};
   try {
     const raw = await fsp.readFile(path.join(os.homedir(), ".claude.json"), "utf8");
     const full = JSON.parse(raw);
-    const minimal = {
+    // Copy the full host config so all MCP server approvals, tool
+    // permissions, model preferences, and settings carry over into the
+    // sandbox. Only override the fields that must differ.
+    const merged = {
+      ...full,
       hasCompletedOnboarding: true,
-      oauthAccount: full.oauthAccount,
-      userID: full.userID,
-      anonymousId: full.anonymousId,
-      installMethod: full.installMethod ?? "sandbox",
-      numStartups: 1,
+      numStartups: full.numStartups ?? 1,
       effortCalloutDismissed: true,
       effortCalloutV2Dismissed: true,
-      hasShownOpus45Notice: full.hasShownOpus45Notice,
-      hasShownOpus46Notice: full.hasShownOpus46Notice,
-      lastReleaseNotesSeen: full.lastReleaseNotesSeen,
-      lastOnboardingVersion: full.lastOnboardingVersion,
-      projects: projectEntry,
+      projects: {
+        ...(full.projects ?? {}),
+        ...projectOverrides,
+      },
     };
-    return JSON.stringify(minimal);
+    return JSON.stringify(merged);
   } catch {
-    return JSON.stringify({ hasCompletedOnboarding: true, projects: projectEntry });
+    return JSON.stringify({
+      hasCompletedOnboarding: true,
+      projects: projectOverrides,
+    });
   }
 }
 
@@ -296,7 +309,7 @@ export async function syncClaudeConfigIn(name: string, worktreePath?: string): P
     ]);
     return;
   }
-  const minimal = await buildMinimalClaudeConfig(worktreePath);
+  const minimal = await buildClaudeConfig(worktreePath);
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
       resolveDockerPath(),
@@ -398,6 +411,8 @@ function spawnSandboxPty(
     // from a shell, Docker Desktop restart, host crash-and-reboot, etc).
     // Reflect that in state so the UI doesn't leave the row stuck at running.
     const branch = listAllBranches().find((b) => b.sandboxName === name);
+    // Only flip to stopped on unexpected exits — skip if our code is
+    // actively managing the lifecycle (creating, starting, restarting).
     if (branch && branch.status === "running") {
       updateBranch(branch.id, { status: "stopped" }).catch((err) =>
         console.error(`updateBranch(${branch.id}) on unexpected pty exit failed:`, err)

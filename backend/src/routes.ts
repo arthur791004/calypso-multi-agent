@@ -542,6 +542,30 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
+  app.post<{ Params: { id: string } }>("/api/branches/:id/refresh", async (req, reply) => {
+    const branch = getBranch(req.params.id);
+    if (!branch) return reply.code(404).send({ error: "not found" });
+    if (!branch.sandboxName) return reply.code(400).send({ error: "no sandbox" });
+    await updateBranch(branch.id, { status: "restarting" });
+    // Non-blocking: return immediately so the UI shows "Restarting…" and
+    // the 3s branch poll picks up the final status when it's done.
+    const sbName = branch.sandboxName;
+    const wtPath = branch.worktreePath;
+    const port = branch.port;
+    const branchId = branch.id;
+    (async () => {
+      try {
+        await stopSandbox(sbName, wtPath).catch(() => {});
+        await startSandbox(sbName, wtPath, port);
+        await updateBranch(branchId, { status: "running", error: undefined });
+      } catch (err: any) {
+        console.error(`restart(${sbName}) failed:`, err);
+        await updateBranch(branchId, { status: "error", error: err.message }).catch(() => {});
+      }
+    })();
+    return { ok: true };
+  });
+
   app.get("/api/sessions", async () => ({ sessions: await listSessions() }));
 
   app.post<{ Params: { id: string } }>("/api/branches/:id/start-dashboard", async (req, reply) => {

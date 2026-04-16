@@ -40,4 +40,5 @@ export const config = {
   maxConcurrentSandboxes: Number(process.env.MAX_SANDBOXES ?? 9),
   sandboxIdleMs: Number(process.env.SANDBOX_IDLE_MS ?? 30 * 60 * 1000),
   idleSweeperIntervalMs: Number(process.env.SANDBOX_IDLE_CHECK_MS ?? 60 * 1000),
+  credentialSyncIntervalMs: Number(process.env.CREDENTIAL_SYNC_MS ?? 5 * 60 * 1000),
 };

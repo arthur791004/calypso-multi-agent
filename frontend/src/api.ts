@@ -6,7 +6,7 @@ export interface Branch {
   worktreePath: string;
   sandboxName?: string;
   port: number;
-  status: "creating" | "stopped" | "starting" | "running" | "error";
+  status: "creating" | "stopped" | "starting" | "restarting" | "running" | "error";
   createdAt: number;
   error?: string;
   hasChanges?: boolean;
@@ -109,6 +109,10 @@ export const api = {
   startDashboard: (id: string) =>
     fetch(`/api/branches/${encodeURIComponent(id)}/start-dashboard`, { method: "POST" }).then(
       j<{ running: true }>
+    ),
+  refreshSandbox: (id: string) =>
+    fetch(`/api/branches/${encodeURIComponent(id)}/refresh`, { method: "POST" }).then(
+      j<{ ok: true }>
     ),
   openEditor: (id: string) =>
     fetch(`/api/branches/${encodeURIComponent(id)}/open-editor`, { method: "POST" }).then(

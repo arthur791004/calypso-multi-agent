@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config, deriveRepoPaths } from "./config.js";
 
-export type BranchStatus = "creating" | "stopped" | "starting" | "running" | "error";
+export type BranchStatus = "creating" | "stopped" | "starting" | "restarting" | "running" | "error";
 
 export interface Branch {
   id: string;
