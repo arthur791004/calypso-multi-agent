@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { MutableRefObject, useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, HStack, Heading, Portal, Tabs, Text, Tooltip } from "@chakra-ui/react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
@@ -20,6 +20,7 @@ interface Props {
   onRefresh: (b: Branch) => void;
   onHardRefresh: (b: Branch) => void;
   onPush: (b: Branch) => void;
+  writeRef?: MutableRefObject<((data: string) => void) | null>;
 }
 
 export function TerminalModal({
@@ -35,6 +36,7 @@ export function TerminalModal({
   onRefresh,
   onHardRefresh,
   onPush,
+  writeRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalDisabled = !branch.isTrunk && branch.status !== "running";
@@ -131,6 +133,13 @@ export function TerminalModal({
     }
     connect();
 
+    // Expose a write function so the chat input can send text to the PTY
+    if (writeRef) {
+      writeRef.current = (data: string) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      };
+    }
+
     const disposable = readOnly
       ? { dispose: () => {} }
       : term.onData((d) => {
@@ -149,6 +158,7 @@ export function TerminalModal({
 
     return () => {
       disposed = true;
+      if (writeRef) writeRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("paste", onPaste, true);

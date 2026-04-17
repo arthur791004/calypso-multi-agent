@@ -263,8 +263,11 @@ export function App() {
   }
 
 
+  // Ref to write to the active terminal's WebSocket (set by TerminalModal)
+  const terminalWriteRef = useRef<((data: string) => void) | null>(null);
+
   function validateCommand(text: string): string | null {
-    if (!text.startsWith("/")) return "Commands must start with /";
+    if (!text.startsWith("/")) return null; // Free text — will be sent to PTY
     const parts = text.split(/\s+/);
     const verb = parts[0];
     const known = ["/branch", "/gh-issue", "/linear"];
@@ -311,6 +314,19 @@ export function App() {
   async function onRunCommand() {
     const text = commandText.trim();
     if (!text || commandBusy) return;
+
+    // Free text (not a slash command) → send to the active Claude PTY
+    if (!text.startsWith("/")) {
+      if (terminalWriteRef.current) {
+        terminalWriteRef.current(text + "\r");
+        setCommandText("");
+      } else {
+        toaster.create({ type: "error", title: "No active terminal — select a task first", duration: 4000 });
+      }
+      return;
+    }
+
+    // Slash command → validate + dispatch to backend
     const error = validateCommand(text);
     if (error) {
       toaster.create({ type: "error", title: error, duration: 4000 });
@@ -594,7 +610,7 @@ export function App() {
                     ref={commandInputRef}
                     size="sm"
                     fontFamily="mono"
-                    placeholder={atCap ? "At sandbox cap — stop one to run more" : "Type / for commands (⌘P)"}
+                    placeholder={atCap ? "At sandbox cap — stop one to run more" : "Type a message or / for commands (⌘P)"}
                     value={commandText}
                     onFocus={() => setCommandInputFocused(true)}
                     onBlur={() => setCommandInputFocused(false)}
@@ -634,7 +650,7 @@ export function App() {
                     disabled={!commandText.trim() || atCap}
                     flexShrink={0}
                   >
-                    Run
+                    Send
                   </Button>
                 </HStack>
               </Box>
@@ -709,6 +725,7 @@ export function App() {
             onPreview={onPreview}
             onOpenEditor={onOpenEditor}
             onRefresh={(b) => onRefreshSandbox(b)}
+            writeRef={terminalWriteRef}
             onHardRefresh={(b) => onRefreshSandbox(b, true)}
             onPush={(b) => onPushAndPR(b)}
           />
