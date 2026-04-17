@@ -378,11 +378,18 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await startBranchSession(id, sbName, worktreePath, port, taskEntry ? buildSeedPrompt() : undefined);
       await updateBranch(id, { worktreePath, status: "running" });
 
-      // Install deps on the host in the background
+      // Install deps on the host in the background (skip if node_modules exists)
       const installCmd = repo.dashboardInstallCmd || DEFAULT_DASHBOARD_INSTALL_CMD;
-      run("/bin/sh", ["-lc", installCmd], { cwd: worktreePath }).catch((err) =>
-        console.error(`[${branchName}] install failed:`, err)
-      );
+      import("node:fs/promises").then(async (fs) => {
+        try {
+          await fs.access(path.join(worktreePath, "node_modules"));
+        } catch {
+          // node_modules missing — run install
+          run("/bin/sh", ["-lc", installCmd], { cwd: worktreePath }).catch((err) =>
+            console.error(`[${branchName}] install failed:`, err)
+          );
+        }
+      });
     } catch (err) {
       // Drop the placeholder record instead of leaving an empty "error"
       // row behind — retries would otherwise accumulate duplicates.
