@@ -10,9 +10,7 @@ export type TerminalKind = "claude" | "shell" | "logs";
 interface Props {
   branch: Branch;
   kind: TerminalKind;
-  fullscreen: boolean;
   isMobile?: boolean;
-  onFullscreenToggle: () => void;
   onKindChange: (kind: TerminalKind) => void;
   onClose: () => void;
   onPreview: (b: Branch) => void;
@@ -20,15 +18,15 @@ interface Props {
   onRefresh: (b: Branch) => void;
   onHardRefresh: (b: Branch) => void;
   onPush: (b: Branch) => void;
+  onToggleSidebar?: () => void;
+  sidebarCollapsed?: boolean;
   writeRef?: MutableRefObject<((data: string) => void) | null>;
 }
 
 export function TerminalModal({
   branch,
   kind,
-  fullscreen,
   isMobile,
-  onFullscreenToggle,
   onKindChange,
   onClose,
   onPreview,
@@ -36,6 +34,8 @@ export function TerminalModal({
   onRefresh,
   onHardRefresh,
   onPush,
+  onToggleSidebar,
+  sidebarCollapsed,
   writeRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -183,13 +183,13 @@ export function TerminalModal({
         borderColor="gray.800"
       >
         <HStack gap={3} minW={0} flex="1">
-          {isMobile && (
-            <Button size="sm" variant="ghost" px={2} onClick={onClose} flexShrink={0}>
-              ←
+          {(isMobile || sidebarCollapsed) && onToggleSidebar && (
+            <Button size="sm" variant="ghost" px={1} onClick={onToggleSidebar} flexShrink={0}>
+              <SidebarIcon />
             </Button>
           )}
           <Heading size="sm" truncate flex="0 1 auto" minW={0}>
-            {branch.name}
+            {branch.isTrunk ? "Dashboard" : branch.name}
           </Heading>
           <Tabs.Root
             value={kind}
@@ -197,27 +197,21 @@ export function TerminalModal({
               if (terminalDisabled) return;
               onKindChange(e.value as TerminalKind);
             }}
-            size="sm"
-            variant="plain"
             flexShrink={0}
-            css={{
-              "--tabs-indicator-bg": "colors.gray.subtle",
-              "--tabs-indicator-shadow": "shadows.xs",
-            }}
+            css={{ "--tabs-height": "48px" }}
           >
-            <Tabs.List>
+            <Tabs.List borderBottom="none">
               <Tabs.Trigger value="claude" disabled={terminalDisabled}>Claude</Tabs.Trigger>
               <Tabs.Trigger value="shell" disabled={terminalDisabled}>Terminal</Tabs.Trigger>
               <Tabs.Trigger value="logs" disabled={terminalDisabled}>Logs</Tabs.Trigger>
-              <Tabs.Indicator />
             </Tabs.List>
           </Tabs.Root>
         </HStack>
         <HStack gap={2}>
+          {!branch.isTrunk && (
           <Box
             position="relative"
             onContextMenu={(e) => {
-              if (branch.isTrunk) return;
               e.preventDefault();
               setReloadMenu({ x: e.clientX, y: e.clientY });
             }}
@@ -225,7 +219,6 @@ export function TerminalModal({
             <IconButton
               label="Reload"
               onClick={(_e) => onRefresh(branch)}
-              disabled={branch.isTrunk}
             >
               <RefreshIcon />
             </IconButton>
@@ -272,13 +265,7 @@ export function TerminalModal({
               </Portal>
             )}
           </Box>
-          <IconButton
-            label="Preview"
-            onClick={(_e) => onPreview(branch)}
-            disabled={branch.status !== "running"}
-          >
-            <PreviewIcon />
-          </IconButton>
+          )}
           {!branch.isTrunk && (
             <IconButton
               label="Push & create PR"
@@ -288,6 +275,13 @@ export function TerminalModal({
               <PushIcon />
             </IconButton>
           )}
+          <IconButton
+            label="Preview"
+            onClick={(_e) => onPreview(branch)}
+            disabled={branch.status !== "running"}
+          >
+            <PreviewIcon />
+          </IconButton>
           {!isMobile && (
             <IconButton
               label="Open in editor"
@@ -297,25 +291,12 @@ export function TerminalModal({
               <EditorIcon />
             </IconButton>
           )}
-          {!isMobile && (
-            <IconButton
-              label={fullscreen ? "Exit full screen" : "Full screen"}
-              onClick={(_e) => onFullscreenToggle()}
-            >
-              {fullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
-            </IconButton>
-          )}
-          {!isMobile && (
-            <IconButton label="Close" onClick={(_e) => onClose()}>
-              <CloseIcon />
-            </IconButton>
-          )}
         </HStack>
       </Flex>
       {!branch.isTrunk && branch.status !== "running" && (
         <Flex
           px={4}
-          py={2}
+          py={4}
           bg={branch.status === "error" ? "red.900" : "gray.900"}
           borderBottomWidth={1}
           borderColor="gray.800"
@@ -344,7 +325,7 @@ export function TerminalModal({
           </Text>
         </Flex>
       )}
-      <Box flex="1" p={2} overflow="hidden" ref={containerRef} css={{ ".xterm": { height: "100%" } }} />
+      <Box flex="1" p={4} overflow="hidden" ref={containerRef} css={{ ".xterm": { height: "100%" } }} />
     </Flex>
   );
 }
@@ -383,33 +364,11 @@ function IconButton({
   );
 }
 
-function FullscreenIcon() {
+function SidebarIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M4 9V4h5" />
-      <path d="M20 9V4h-5" />
-      <path d="M4 15v5h5" />
-      <path d="M20 15v5h-5" />
-    </svg>
-  );
-}
-
-function ExitFullscreenIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M9 4v5H4" />
-      <path d="M15 4v5h5" />
-      <path d="M9 20v-5H4" />
-      <path d="M15 20v-5h5" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M6 6l12 12" />
-      <path d="M6 18L18 6" />
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18" />
     </svg>
   );
 }

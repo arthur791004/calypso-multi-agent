@@ -100,9 +100,10 @@ export async function registerTerminal(app: FastifyInstance): Promise<void> {
         return;
       }
 
-      if (!branch.sandboxName) {
+      const repo = getRepo(branch.repoId);
+      if (!repo?.sandboxName) {
         try {
-          socket.send("\r\n[branch has no sandbox]\r\n");
+          socket.send("\r\n[no sandbox for repo]\r\n");
           socket.close();
         } catch {}
         return;
@@ -137,7 +138,6 @@ export async function registerTerminal(app: FastifyInstance): Promise<void> {
       }
 
       // Shell tab: exec a bash session inside the repo's sandbox
-      const repo = getRepo(branch.repoId);
       if (!repo?.sandboxName) {
         try { socket.close(); } catch {}
         return;

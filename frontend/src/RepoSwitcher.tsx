@@ -7,6 +7,7 @@ import {
   Portal,
   Spinner,
   Text,
+  Tooltip,
 } from "@chakra-ui/react";
 import { api, Repo } from "./api";
 import { toaster } from "./Toaster";
@@ -78,7 +79,7 @@ export function RepoSwitcher({ repos, activeRepoId, onChanged, onSettings }: Pro
   return (
     <Menu.Root>
       <Menu.Trigger asChild>
-        <Button size="sm" variant="ghost" minW="0" maxW="160px" justifyContent="space-between">
+        <Button size="sm" variant="ghost" w="100%" justifyContent="space-between">
           <HStack gap={2} minW={0}>
             {busy === "activate" && <Spinner size="xs" />}
             <Text truncate fontFamily="mono" fontSize="sm">
@@ -111,40 +112,67 @@ export function RepoSwitcher({ repos, activeRepoId, onChanged, onSettings }: Pro
                   </HStack>
                   <HStack gap={1}>
                     {onSettings && r.id === activeRepoId && (
-                      <Button
-                        size="2xs"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSettings();
-                        }}
-                      >
-                        ⚙
-                      </Button>
+                      <Tooltip.Root openDelay={300}>
+                        <Tooltip.Trigger asChild>
+                          <Button
+                            size="2xs"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSettings();
+                            }}
+                          >
+                            ⚙
+                          </Button>
+                        </Tooltip.Trigger>
+                        <Portal>
+                          <Tooltip.Positioner>
+                            <Tooltip.Content>Settings</Tooltip.Content>
+                          </Tooltip.Positioner>
+                        </Portal>
+                      </Tooltip.Root>
                     )}
-                    <Button
-                      size="2xs"
-                      variant="ghost"
-                      loading={busy === `sync:${r.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        syncRepo(r, onChanged, setBusy);
-                      }}
-                    >
-                      ↻
-                    </Button>
-                    <Button
-                      size="2xs"
-                      variant="ghost"
-                      colorPalette="red"
-                      loading={busy === `remove:${r.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeRepo(r);
-                      }}
-                    >
-                      ✕
-                    </Button>
+                    <Tooltip.Root openDelay={300}>
+                      <Tooltip.Trigger asChild>
+                        <Button
+                          size="2xs"
+                          variant="ghost"
+                          loading={busy === `sync:${r.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            syncRepo(r, onChanged, setBusy);
+                          }}
+                        >
+                          ↻
+                        </Button>
+                      </Tooltip.Trigger>
+                      <Portal>
+                        <Tooltip.Positioner>
+                          <Tooltip.Content>Pull latest</Tooltip.Content>
+                        </Tooltip.Positioner>
+                      </Portal>
+                    </Tooltip.Root>
+                    <Tooltip.Root openDelay={300}>
+                      <Tooltip.Trigger asChild>
+                        <Button
+                          size="2xs"
+                          variant="ghost"
+                          colorPalette="red"
+                          loading={busy === `remove:${r.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeRepo(r);
+                          }}
+                        >
+                          ✕
+                        </Button>
+                      </Tooltip.Trigger>
+                      <Portal>
+                        <Tooltip.Positioner>
+                          <Tooltip.Content>Remove repo</Tooltip.Content>
+                        </Tooltip.Positioner>
+                      </Portal>
+                    </Tooltip.Root>
                   </HStack>
                 </HStack>
               </Menu.Item>

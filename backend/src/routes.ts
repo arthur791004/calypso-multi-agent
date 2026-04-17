@@ -620,7 +620,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const repo = getRepo(branch.repoId);
-    if (!repo?.sandboxName) return reply.code(400).send({ error: "no sandbox for repo" });
+    if (!repo) return reply.code(400).send({ error: "repo not found" });
+    if (!repo.sandboxName) {
+      repo.sandboxName = repoSandboxName(repo);
+      await updateRepo(repo.id, { sandboxName: repo.sandboxName });
+    }
 
     if (branch.status === "running") {
       await stopBranchSession(branch.id);
@@ -661,7 +665,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const branch = getBranch(req.params.id);
     if (!branch) return reply.code(404).send({ error: "not found" });
     const repo = getRepo(branch.repoId);
-    if (!repo?.sandboxName) return reply.code(400).send({ error: "no sandbox for repo" });
+    if (!repo) return reply.code(400).send({ error: "repo not found" });
+    if (!repo.sandboxName) {
+      repo.sandboxName = repoSandboxName(repo);
+      await updateRepo(repo.id, { sandboxName: repo.sandboxName });
+    }
     const hard = req.query.hard === "1";
 
     const folderSlug = slugify(branch.name) || branch.id;
@@ -811,12 +819,9 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const branch = getBranch(req.params.id);
     if (!branch) return reply.code(404).send({ error: "not found" });
     if (isTrunk(branch)) return reply.code(400).send({ error: "trunk cannot be deleted" });
-    // v2: just kill the branch session, don't touch the repo sandbox
     await stopBranchSession(branch.id).catch(() => {});
     if (branch.worktreePath) await removeWorktree(branch.worktreePath).catch(() => {});
     if (branch.name) await deleteGitBranch(branch.name).catch(() => {});
-    // Mark the session as completed so the same issue/linear URL can be
-    // re-run after deletion — the frontend validation checks completedAt.
     const repo = getActiveRepo();
     if (repo) {
       const session = await findSessionByBranch(repo.name, branch.name);
