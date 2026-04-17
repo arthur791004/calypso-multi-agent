@@ -343,6 +343,15 @@ export async function ensureRepoSandbox(repo: Repo): Promise<string> {
     if ((await getSandboxStatus(name)) === "running") break;
   }
 
+  // Mark all directories as safe so git doesn't complain about ownership
+  // (sandbox runs as 'agent', worktrees owned by host user)
+  try {
+    await run(resolveDockerPath(), [
+      "sandbox", "exec", name, "sh", "-c",
+      "git config --global --add safe.directory '*' 2>/dev/null; true",
+    ]);
+  } catch {}
+
   // Install yarn globally (needed for git hooks + dev server)
   try {
     await run(resolveDockerPath(), [
