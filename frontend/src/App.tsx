@@ -477,9 +477,30 @@ export function App() {
           overflow="hidden"
           flexShrink={0}
         >
-          <Heading size="sm" truncate flex="1" minW={0}>
-            Shipyard
-          </Heading>
+          <HStack gap={2} flex="1" minW={0}>
+            <Heading size="sm" truncate>Tasks</Heading>
+            <Tooltip.Root openDelay={300}>
+              <Tooltip.Trigger asChild>
+                <Button
+                  aria-label="New task"
+                  variant="ghost"
+                  size="xs"
+                  px={1}
+                  onClick={() => {
+                    commandInputRef.current?.focus();
+                    setCommandText("/");
+                  }}
+                >
+                  +
+                </Button>
+              </Tooltip.Trigger>
+              <Portal>
+                <Tooltip.Positioner>
+                  <Tooltip.Content>New task (⌘P)</Tooltip.Content>
+                </Tooltip.Positioner>
+              </Portal>
+            </Tooltip.Root>
+          </HStack>
           <Box flexShrink={0}>
             <RepoSwitcher
               repos={repos}
@@ -561,102 +582,6 @@ export function App() {
           </Tooltip.Root>
         </Flex>
 
-        {activeRepoId && (
-          <Box px={4} py={3} borderTopWidth={1} borderColor="gray.800">
-            <Stack gap={2}>
-              <Box position="relative">
-                {commandMenuItems.length > 0 && (
-                  <Box
-                    position="absolute"
-                    left={0}
-                    right={0}
-                    bottom="100%"
-                    mb={1}
-                    borderWidth={1}
-                    borderColor="gray.700"
-                    borderRadius="md"
-                    bg="gray.900"
-                    boxShadow="lg"
-                    overflow="hidden"
-                    zIndex={10}
-                  >
-                    {commandMenuItems.map((item, i) => (
-                      <Box
-                        key={item.prefix}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          pickCommand(item.prefix);
-                        }}
-                        onMouseEnter={() => setCommandMenuIndex(i)}
-                        px={3}
-                        py={2}
-                        cursor="pointer"
-                        bg={i === clampedMenuIndex ? "gray.800" : undefined}
-                      >
-                        <HStack gap={2} justify="space-between">
-                          <Code fontSize="xs" colorPalette="gray">
-                            {item.usage}
-                          </Code>
-                          <Text fontSize="xs" color="gray.500">
-                            {item.desc}
-                          </Text>
-                        </HStack>
-                      </Box>
-                    ))}
-                  </Box>
-                )}
-                <HStack gap={2}>
-                  <Input
-                    ref={commandInputRef}
-                    size="sm"
-                    fontFamily="mono"
-                    placeholder={atCap ? "At sandbox cap — stop one to run more" : "Type a message or / for commands (⌘P)"}
-                    value={commandText}
-                    onFocus={() => setCommandInputFocused(true)}
-                    onBlur={() => setCommandInputFocused(false)}
-                    onChange={(e) => {
-                      setCommandText(e.target.value);
-                      setCommandMenuIndex(0);
-                    }}
-                    onKeyDown={(e) => {
-                      if (commandMenuItems.length > 0) {
-                        if (e.key === "ArrowDown") {
-                          e.preventDefault();
-                          setCommandMenuIndex((i) => (i + 1) % commandMenuItems.length);
-                          return;
-                        }
-                        if (e.key === "ArrowUp") {
-                          e.preventDefault();
-                          setCommandMenuIndex(
-                            (i) => (i - 1 + commandMenuItems.length) % commandMenuItems.length
-                          );
-                          return;
-                        }
-                        if (e.key === "Enter" || e.key === "Tab") {
-                          e.preventDefault();
-                          pickCommand(commandMenuItems[clampedMenuIndex].prefix);
-                          return;
-                        }
-                      }
-                      if (e.key === "Enter") onRunCommand();
-                    }}
-                    disabled={commandBusy || atCap}
-                  />
-                  <Button
-                    size="sm"
-                    colorPalette="blue"
-                    onClick={onRunCommand}
-                    loading={commandBusy}
-                    disabled={!commandText.trim() || atCap}
-                    flexShrink={0}
-                  >
-                    Send
-                  </Button>
-                </HStack>
-              </Box>
-            </Stack>
-          </Box>
-        )}
       </Flex>
 
       {!isMobile && showLeft && showRight && (
@@ -693,52 +618,147 @@ export function App() {
         />
       )}
 
-      <Box
+      <Flex
+        direction="column"
         flex="1"
         minW={0}
         overflow="hidden"
-        display={showRight ? "block" : "none"}
+        display={showRight ? "flex" : "none"}
         position={terminalFullscreen ? "fixed" : undefined}
         inset={terminalFullscreen ? 0 : undefined}
         zIndex={terminalFullscreen ? 100 : undefined}
         bg="gray.950"
         css={{ viewTransitionName: "terminal-pane" }}
       >
-        {terminalPanel ? (() => {
-          // Look up the live branch from the polled branches array so
-          // status changes (restarting → running, etc.) are reflected in
-          // TerminalModal without needing to re-select the task.
-          const liveBranch =
-            branches.find((b) => b.id === terminalPanel.branch.id) ?? terminalPanel.branch;
-          return (
-          <TerminalModal
-            key={`${liveBranch.id}:${terminalPanel.kind}:${liveBranch.status}`}
-            branch={liveBranch}
-            kind={terminalPanel.kind}
-            fullscreen={terminalFullscreen}
-            isMobile={isMobile}
-            onFullscreenToggle={toggleFullscreen}
-            onKindChange={(kind) =>
-              setTerminalPanel((prev) => (prev ? { ...prev, kind } : prev))
-            }
-            onClose={closeTerminal}
-            onPreview={onPreview}
-            onOpenEditor={onOpenEditor}
-            onRefresh={(b) => onRefreshSandbox(b)}
-            writeRef={terminalWriteRef}
-            onHardRefresh={(b) => onRefreshSandbox(b, true)}
-            onPush={(b) => onPushAndPR(b)}
-          />
-          );
-        })() : (
-          <Flex h="100%" align="center" justify="center" color="gray.600" textAlign="center" px={8}>
-            <Stack gap={2} align="center">
-              <Text fontSize="sm">Select a branch on the left to see its terminal.</Text>
-              <Text fontSize="xs">Or run /gh-issue, /linear, /branch below.</Text>
-            </Stack>
-          </Flex>
+        <Box flex="1" overflow="hidden">
+          {terminalPanel ? (() => {
+            const liveBranch =
+              branches.find((b) => b.id === terminalPanel.branch.id) ?? terminalPanel.branch;
+            return (
+            <TerminalModal
+              key={`${liveBranch.id}:${terminalPanel.kind}:${liveBranch.status}`}
+              branch={liveBranch}
+              kind={terminalPanel.kind}
+              fullscreen={terminalFullscreen}
+              isMobile={isMobile}
+              onFullscreenToggle={toggleFullscreen}
+              onKindChange={(kind) =>
+                setTerminalPanel((prev) => (prev ? { ...prev, kind } : prev))
+              }
+              onClose={closeTerminal}
+              onPreview={onPreview}
+              onOpenEditor={onOpenEditor}
+              onRefresh={(b) => onRefreshSandbox(b)}
+              writeRef={terminalWriteRef}
+              onHardRefresh={(b) => onRefreshSandbox(b, true)}
+              onPush={(b) => onPushAndPR(b)}
+            />
+            );
+          })() : (
+            <Flex h="100%" align="center" justify="center" color="gray.600" textAlign="center" px={8}>
+              <Stack gap={2} align="center">
+                <Text fontSize="sm">Select a task on the left to see its terminal.</Text>
+                <Text fontSize="xs">Type a message or use /gh-issue, /linear, /branch.</Text>
+              </Stack>
+            </Flex>
+          )}
+        </Box>
+
+        {activeRepoId && (
+          <Box px={4} py={3} borderTopWidth={1} borderColor="gray.800">
+            <Box position="relative">
+              {commandMenuItems.length > 0 && (
+                <Box
+                  position="absolute"
+                  left={0}
+                  right={0}
+                  bottom="100%"
+                  mb={1}
+                  borderWidth={1}
+                  borderColor="gray.700"
+                  borderRadius="md"
+                  bg="gray.900"
+                  boxShadow="lg"
+                  overflow="hidden"
+                  zIndex={10}
+                >
+                  {commandMenuItems.map((item, i) => (
+                    <Box
+                      key={item.prefix}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pickCommand(item.prefix);
+                      }}
+                      onMouseEnter={() => setCommandMenuIndex(i)}
+                      px={3}
+                      py={2}
+                      cursor="pointer"
+                      bg={i === clampedMenuIndex ? "gray.800" : undefined}
+                    >
+                      <HStack gap={2} justify="space-between">
+                        <Code fontSize="xs" colorPalette="gray">
+                          {item.usage}
+                        </Code>
+                        <Text fontSize="xs" color="gray.500">
+                          {item.desc}
+                        </Text>
+                      </HStack>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+              <HStack gap={2}>
+                <Input
+                  ref={commandInputRef}
+                  size="sm"
+                  fontFamily="mono"
+                  placeholder={atCap ? "At sandbox cap" : "Type a message or /command... (⌘P)"}
+                  value={commandText}
+                  onFocus={() => setCommandInputFocused(true)}
+                  onBlur={() => setCommandInputFocused(false)}
+                  onChange={(e) => {
+                    setCommandText(e.target.value);
+                    setCommandMenuIndex(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (commandMenuItems.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setCommandMenuIndex((i) => (i + 1) % commandMenuItems.length);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setCommandMenuIndex(
+                          (i) => (i - 1 + commandMenuItems.length) % commandMenuItems.length
+                        );
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        pickCommand(commandMenuItems[clampedMenuIndex].prefix);
+                        return;
+                      }
+                    }
+                    if (e.key === "Enter") onRunCommand();
+                  }}
+                  disabled={commandBusy || atCap}
+                />
+                <Button
+                  size="sm"
+                  colorPalette="blue"
+                  onClick={onRunCommand}
+                  loading={commandBusy}
+                  disabled={!commandText.trim() || atCap}
+                  flexShrink={0}
+                >
+                  Send
+                </Button>
+              </HStack>
+            </Box>
+          </Box>
         )}
-      </Box>
+      </Flex>
 
       {ctxMenu && (
         <Portal>
