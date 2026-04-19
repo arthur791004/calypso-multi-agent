@@ -106,6 +106,11 @@ export function repoSandboxName(repo: Repo): string {
   return `claude-${repo.name}`;
 }
 
+// Host path to the shipyard:sandbox CLI dir. Bind-mounted into every repo
+// sandbox at the same path and prepended to PATH so Claude can call
+// `shipyard:sandbox push` to trigger host-side git operations.
+const SHIPYARD_BIN_DIR = path.join(config.projectRoot, "backend", "sandbox-bin");
+
 // ---------------------------------------------------------------------------
 // Sandbox existence / status
 // ---------------------------------------------------------------------------
@@ -309,6 +314,7 @@ export async function ensureRepoSandbox(repo: Repo): Promise<string> {
       repo.worktreesDir,    // contains trunk + all branch worktrees
       config.claudeSandboxDir,
       config.tasksDir,
+      SHIPYARD_BIN_DIR,     // shipyard:sandbox CLI for host-mediated ops
     ];
     // Also mount the original repo if it's different (for git objects)
     if (repo.linkTarget && !mounts.includes(repo.linkTarget)) {
@@ -403,7 +409,16 @@ export async function startBranchSession(
 
   const dockerPath = resolveDockerPath();
   const execArgs = ["sandbox", "exec", "-it", "-w", worktreePath];
-  execArgs.push(sandboxName, "sh", "-lc", "exec claude --dangerously-skip-permissions");
+  // Prepend the shipyard bin dir to PATH and inject branch/backend context so
+  // the sandboxed Claude can invoke `shipyard:sandbox push` via the CLI.
+  // Env assignments before `exec` set them only for the claude process + its
+  // children (shell subprocesses for its Bash tool inherit them).
+  const shellCmd =
+    `PATH=${SHIPYARD_BIN_DIR}:$PATH ` +
+    `SHIPYARD_BRANCH_ID=${branchId} ` +
+    `SHIPYARD_BACKEND_URL=http://host.docker.internal:${config.port} ` +
+    `exec claude --dangerously-skip-permissions`;
+  execArgs.push(sandboxName, "sh", "-lc", shellCmd);
 
   const term = pty.spawn(dockerPath, execArgs, {
     name: "xterm-256color",

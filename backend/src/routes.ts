@@ -695,11 +695,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Params: { id: string } }>("/api/branches/:id/push", async (req, reply) => {
+  app.post<{ Params: { id: string }; Querystring: { dryRun?: string } }>("/api/branches/:id/push", async (req, reply) => {
     const branch = getBranch(req.params.id);
     if (!branch) return reply.code(404).send({ error: "not found" });
     if (isTrunk(branch)) return reply.code(400).send({ error: "cannot push trunk" });
     if (!branch.worktreePath) return reply.code(400).send({ error: "no worktree" });
+
+    // Test/CI escape hatch: skip the real git/gh invocations and return a
+    // synthetic PR URL. Used by the push-flow test suite so we don't need
+    // real SSH/gh auth or a reachable remote.
+    if (req.query?.dryRun === "1") {
+      app.log.info(`[push:dry-run] branch=${branch.name} worktree=${branch.worktreePath}`);
+      return {
+        url: `dry-run://branches/${branch.id}/pr`,
+        created: false,
+        dryRun: true,
+      };
+    }
 
     // Push from the host (where SSH keys and gh auth are available).
     try {

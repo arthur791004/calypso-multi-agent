@@ -18,7 +18,6 @@ interface Props {
   onOpenEditor: (b: Branch) => void;
   onRefresh: (b: Branch) => void;
   onHardRefresh: (b: Branch) => void;
-  onPush: (b: Branch) => void;
   onToggleSidebar?: () => void;
   sidebarCollapsed?: boolean;
   writeRef?: MutableRefObject<((data: string) => void) | null>;
@@ -35,7 +34,6 @@ export function TerminalModal({
   onOpenEditor,
   onRefresh,
   onHardRefresh,
-  onPush,
   onToggleSidebar,
   sidebarCollapsed,
   writeRef,
@@ -270,15 +268,6 @@ export function TerminalModal({
             )}
           </Box>
           )}
-          {!branch.isTrunk && (
-            <IconButton
-              label="Push & create PR"
-              onClick={(_e) => onPush(branch)}
-              disabled={!branch.worktreePath}
-            >
-              <PushIcon />
-            </IconButton>
-          )}
           <Box
             position="relative"
             onContextMenu={(e) => {
@@ -444,15 +433,6 @@ function PreviewIcon() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
-function PushIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 19V5" />
-      <path d="M5 12l7-7 7 7" />
     </svg>
   );
 }

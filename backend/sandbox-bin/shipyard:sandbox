@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# shipyard:sandbox — CLI bridge for sandboxed Claude to invoke host-mediated
+# operations (push, create PR) via the backend API. Env vars SHIPYARD_BRANCH_ID
+# and SHIPYARD_BACKEND_URL are injected by sandbox.ts when the session starts.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<EOF
+usage: shipyard:sandbox <command>
+
+commands:
+  push    push the current branch and create/update its PR
+EOF
+  exit 2
+}
+
+cmd="${1:-}"
+shift || true
+[ -z "$cmd" ] && usage
+
+BACKEND="${SHIPYARD_BACKEND_URL:-http://host.docker.internal:9090}"
+BRANCH="${SHIPYARD_BRANCH_ID:-}"
+if [ -z "$BRANCH" ]; then
+  echo "error: SHIPYARD_BRANCH_ID not set in sandbox env" >&2
+  exit 1
+fi
+
+case "$cmd" in
+  push)
+    url="$BACKEND/api/branches/$BRANCH/push"
+    # Test/CI escape hatch — tells backend to skip the real git/gh calls.
+    if [ "${SHIPYARD_PUSH_DRYRUN:-}" = "1" ]; then
+      url="$url?dryRun=1"
+    fi
+    # No body is sent, so don't set Content-Type (Fastify's JSON parser
+    # rejects an empty body when content-type is application/json).
+    exec curl -sS --fail-with-body -X POST "$url"
+    ;;
+  *)
+    usage
+    ;;
+esac

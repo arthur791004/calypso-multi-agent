@@ -130,23 +130,6 @@ export function App() {
     });
   }
 
-  async function onPushAndPR(b: Branch) {
-    try {
-      const res = await api.pushAndPR(b.id);
-      if (res.url) {
-        toaster.create({
-          type: "info",
-          title: res.created ? "PR created" : "Pushed",
-          description: res.url,
-          duration: 8000,
-        });
-        window.open(res.url, "_blank");
-      }
-    } catch (err: any) {
-      toaster.create({ type: "error", title: err?.message ?? "Push failed", duration: 6000 });
-    }
-  }
-
   async function onRefreshSandbox(b: Branch, hard = false) {
     try {
       await api.refreshSandbox(b.id, hard);
@@ -293,7 +276,6 @@ export function App() {
                   onRefresh={(b) => onRefreshSandbox(b)}
                   writeRef={terminalWriteRef}
                   onHardRefresh={(b) => onRefreshSandbox(b, true)}
-                  onPush={(b) => onPushAndPR(b)}
                   sidebarCollapsed={sidebarCollapsed}
                   onToggleSidebar={() => {
                     if (isMobile) {
@@ -472,7 +454,6 @@ export function App() {
           session={ctxMenu.session}
           onClose={() => setCtxMenu(null)}
           onPreview={onPreview}
-          onPushAndPR={onPushAndPR}
           onOpenEditor={onOpenEditor}
           onRefresh={(b) => onRefreshSandbox(b)}
           onHardRefresh={(b) => onRefreshSandbox(b, true)}
