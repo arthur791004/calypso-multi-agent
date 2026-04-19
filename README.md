@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="frontend/public/icon.svg" alt="Shipyard" width="120" />
+</p>
+
 # Shipyard
 
 A chat-style app for running multiple Claude Code agents in parallel. Hand Shipyard a task — a GitHub issue URL, a Linear ticket, or just plain English — and it creates a branch, spins up a sandbox, and Claude starts working. You watch in the terminal or walk away.
