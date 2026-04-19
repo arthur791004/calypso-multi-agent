@@ -88,8 +88,15 @@ export function TerminalModal({
     const refocus = () => term.focus();
     container.addEventListener("mousedown", refocus);
 
+    // `disposed` is hoisted above the callback registrations so every async
+    // entry point (onmessage, onPaste, onResize, ResizeObserver, writeRef)
+    // can early-return after cleanup. Without these guards xterm crashes
+    // with "Cannot read properties of undefined (reading 'dimensions')"
+    // when a queued event fires between term.dispose() and GC.
+    let disposed = false;
+
     const onPaste = (ev: ClipboardEvent) => {
-      if (readOnly) return;
+      if (disposed || readOnly) return;
       // Skip if the paste is targeting a real text input outside the terminal
       // (e.g. the Add Branch name field) — we don't want to steal from those.
       const active = document.activeElement;
@@ -115,15 +122,18 @@ export function TerminalModal({
     const wsUrl = `${wsProto}://${window.location.host}/api/branches/${encodeURIComponent(branch.id)}/terminal?kind=${wsKind}`;
 
     let ws: WebSocket;
-    let disposed = false;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
     function connect() {
       ws = new WebSocket(wsUrl);
       ws.onopen = () => {
+        if (disposed) return;
         ws.send(`\x01resize:${term.cols},${term.rows}`);
       };
-      ws.onmessage = (e) => term.write(typeof e.data === "string" ? e.data : "");
+      ws.onmessage = (e) => {
+        if (disposed) return;
+        term.write(typeof e.data === "string" ? e.data : "");
+      };
       ws.onclose = () => {
         if (disposed) return;
         // Auto-reconnect after 2s — handles PTY not ready yet,
@@ -138,6 +148,7 @@ export function TerminalModal({
     // Expose a write function so the chat input can send text to the PTY
     if (writeRef) {
       writeRef.current = (data: string) => {
+        if (disposed) return;
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
       };
     }
@@ -145,10 +156,12 @@ export function TerminalModal({
     const disposable = readOnly
       ? { dispose: () => {} }
       : term.onData((d) => {
+          if (disposed) return;
           if (ws.readyState === WebSocket.OPEN) ws.send(d);
         });
 
     const onResize = () => {
+      if (disposed) return;
       try { fit.fit(); } catch {}
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(`\x01resize:${term.cols},${term.rows}`);
@@ -159,6 +172,8 @@ export function TerminalModal({
     ro.observe(containerRef.current);
 
     return () => {
+      // Flip the flag FIRST so any in-flight callback that races the
+      // cleanup early-returns before touching the disposed terminal.
       disposed = true;
       if (writeRef) writeRef.current = null;
       if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -167,8 +182,17 @@ export function TerminalModal({
       container.removeEventListener("mousedown", refocus);
       ro.disconnect();
       disposable.dispose();
-      ws.close();
-      term.dispose();
+      // Detach the WS handlers before closing so a late `onmessage` /
+      // `onclose` can't trigger work on the terminal while it's being
+      // disposed. `ws` may be undefined here if the very first connect()
+      // synchronously failed — the optional-chain guards against that.
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.close();
+      }
+      try { term.dispose(); } catch {}
     };
   }, [branch.id, branch.status, kind]);
 
