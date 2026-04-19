@@ -35,7 +35,9 @@ process.env.DATA_DIR = tmpDataDir;
 
 const state = await import("../src/state.js");
 const { registerRoutes } = await import("../src/routes.js");
-const { injectTaskIntoClaudeMd, taskFilePath } = await import("../src/tasks.js");
+const { injectTaskIntoClaudeMd, injectSandboxRulesIntoClaudeMd, taskFilePath } = await import(
+  "../src/tasks.js"
+);
 const { runOrThrow } = await import("../src/shell.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -408,18 +410,50 @@ describe("shipyard:sandbox commit CLI", () => {
 
 // -------- Layer 3: CLAUDE.md injection guides Claude to the CLI --------
 
-describe("injectTaskIntoClaudeMd", () => {
-  it("writes a Sandbox-rules section covering commit, push, and open-PR via shipyard:sandbox", async () => {
-    const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-cmd-"));
+describe("injectSandboxRulesIntoClaudeMd", () => {
+  it("adds sandbox rules to a worktree with no CLAUDE.md", async () => {
+    const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-rules-"));
     try {
-      await injectTaskIntoClaudeMd(worktree, "demo-slug");
+      await injectSandboxRulesIntoClaudeMd(worktree);
       const body = await fsp.readFile(path.join(worktree, "CLAUDE.md"), "utf8");
-      // All three actions Claude needs to know are explicitly named.
       expect(body).toMatch(/\*\*Commit\*\*: `shipyard:sandbox commit/);
       expect(body).toMatch(/\*\*Push\*\*: `shipyard:sandbox push`/);
       expect(body).toMatch(/\*\*Open a PR\*\*/);
       expect(body).toMatch(/Do NOT run `git commit`, `git push`, or `gh pr create` directly/);
-      // Points Claude at the per-branch task history file.
+    } finally {
+      await fsp.rm(worktree, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves existing CLAUDE.md content and replaces the rules section in-place on repeat calls", async () => {
+    const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-rules-"));
+    try {
+      await fsp.writeFile(path.join(worktree, "CLAUDE.md"), "# my project\n\nsome notes\n");
+      await injectSandboxRulesIntoClaudeMd(worktree);
+      await injectSandboxRulesIntoClaudeMd(worktree);
+      const body = await fsp.readFile(path.join(worktree, "CLAUDE.md"), "utf8");
+      expect(body).toContain("# my project");
+      expect(body).toContain("some notes");
+      // Exactly one opening and one closing marker — no duplicates.
+      const matches = body.match(/<!-- shipyard:sandbox-rules -->/g) || [];
+      expect(matches.length).toBe(2);
+    } finally {
+      await fsp.rm(worktree, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("injectTaskIntoClaudeMd", () => {
+  it("adds both the Sandbox rules and a Current Task section", async () => {
+    const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-cmd-"));
+    try {
+      await injectTaskIntoClaudeMd(worktree, "demo-slug");
+      const body = await fsp.readFile(path.join(worktree, "CLAUDE.md"), "utf8");
+      // Sandbox rules (via the shared helper) are present.
+      expect(body).toMatch(/\*\*Commit\*\*: `shipyard:sandbox commit/);
+      expect(body).toMatch(/\*\*Push\*\*: `shipyard:sandbox push`/);
+      // Current Task block points at the per-branch task history file.
+      expect(body).toContain("## Current Task");
       expect(body).toContain(taskFilePath("demo-slug"));
     } finally {
       await fsp.rm(worktree, { recursive: true, force: true });
