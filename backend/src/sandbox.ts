@@ -200,6 +200,28 @@ async function syncSandboxConfig(sandboxName: string): Promise<void> {
   await writeFileIntoSandbox(sandboxName, "/home/agent/.claude/CLAUDE.md", SANDBOX_CLAUDE_MD);
 }
 
+// Kill any claude processes left over from a previous backend run. When the
+// host-side Node process dies unexpectedly (crash, `kill -9`, sometimes
+// tsx-watch reloads), the `docker sandbox exec` children keep running as
+// orphans (PPID=0) inside the sandbox VM. Each claude session holds ~300MB
+// of RAM; in our 3.8GB sandbox they pile up fast and eventually OOM-kill
+// running sessions mid-work. Reap them on boot before rehydrating so the
+// memory budget is clean.
+async function reapOrphanClaudes(sandboxName: string): Promise<void> {
+  try {
+    await run(resolveDockerPath(), [
+      "sandbox", "exec", sandboxName, "sh", "-c",
+      // Two passes: TERM first, KILL anything still alive after 1s.
+      [
+        `ps -eo pid,ppid,cmd | awk '$2==0 && /claude --dangerously-skip-permissions/ {print $1}' | xargs -r kill -TERM 2>/dev/null`,
+        `sleep 1`,
+        `ps -eo pid,ppid,cmd | awk '$2==0 && /claude --dangerously-skip-permissions/ {print $1}' | xargs -r kill -KILL 2>/dev/null`,
+        `true`,
+      ].join("; "),
+    ]);
+  } catch {}
+}
+
 // ---------------------------------------------------------------------------
 // Sandbox existence / status
 // ---------------------------------------------------------------------------
@@ -401,6 +423,7 @@ export async function ensureRepoSandbox(repo: Repo): Promise<string> {
     try { await ensureSandboxProxyAllowsBackend(name); } catch (err) {
       console.warn(`ensureSandboxProxyAllowsBackend(${name}) failed:`, err);
     }
+    try { await reapOrphanClaudes(name); } catch {}
     try { await installShipyardCli(name); } catch (err) {
       console.warn(`installShipyardCli(${name}) failed:`, err);
     }
