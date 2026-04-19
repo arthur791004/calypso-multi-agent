@@ -41,17 +41,19 @@ import {
 } from "./sandbox.js";
 import { createSession, ensureSession, findSessionByBranch, listSessions, updateSession } from "./sessions.js";
 import { appendTaskEntry, buildSeedPrompt, injectTrunkClaudeMd, taskFilePath, TaskEntry } from "./tasks.js";
+import { generateBranchName } from "./llm.js";
 
-function slugify(input: string): string {
-  return (
-    input
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40)
-  );
-}
+import { classifyFreeForm, firstNWords, slugify, uniqueBranchName as uniqueFromSet } from "./routeHelpers.js";
+
+const TASK_INSTRUCTIONS = [
+  "## Instructions",
+  "",
+  "1. Read the context above carefully.",
+  "2. Plan the implementation — keep changes focused and minimal.",
+  "3. Implement the changes and verify with relevant tests.",
+  "4. Commit with a clear message using `shipyard:sandbox commit -m \"msg\"`.",
+  "5. When ready, push + open/refresh the PR with `shipyard:sandbox push`.",
+].join("\n");
 
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
   // Accept raw commit messages as text/plain bodies from shipyard:sandbox commit.
@@ -397,6 +399,140 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     return created;
   }
 
+  function uniqueBranchName(base: string): string {
+    return uniqueFromSet(base, new Set(listBranches().map((b) => b.name)));
+  }
+
+  async function createGhIssueBranch(url: string, userNote?: string): Promise<Branch> {
+    const m = url.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/);
+    const branchName = m ? `issue-${m[1]}` : `issue-${Date.now()}`;
+    const repo = getActiveRepo();
+    if (!repo) throw new Error("no active repo");
+
+    // Pre-fetch issue content on the host (where gh is authenticated) so
+    // Claude inside the sandbox doesn't need gh CLI access.
+    let issueTitle = "";
+    let issueBody = "";
+    let issueComments = "";
+    try {
+      const res = await run(
+        "gh",
+        ["issue", "view", url, "--json", "title,body,comments", "--jq",
+         '(.title) + "\\n---BODY---\\n" + (.body) + "\\n---COMMENTS---\\n" + ([.comments[] | "**" + .author.login + "**: " + .body] | join("\\n\\n"))'],
+        { cwd: repo.repoPath }
+      );
+      if (res.code === 0) {
+        const out = res.stdout.trim();
+        const bodyIdx = out.indexOf("\n---BODY---\n");
+        const commentsIdx = out.indexOf("\n---COMMENTS---\n");
+        if (bodyIdx >= 0 && commentsIdx >= 0) {
+          issueTitle = out.slice(0, bodyIdx);
+          issueBody = out.slice(bodyIdx + 12, commentsIdx);
+          issueComments = out.slice(commentsIdx + 16);
+        } else {
+          issueBody = out;
+        }
+      }
+    } catch {}
+
+    const sections: string[] = [];
+    if (userNote) sections.push(`## User note\n\n${userNote}`);
+    if (issueTitle || issueBody) {
+      sections.push(`## Issue: ${issueTitle || url}\n\n${issueBody}`);
+    } else {
+      sections.push(`## Issue\n\nURL: ${url}\n\n(Could not pre-fetch issue content. Read the issue at the URL above.)`);
+    }
+    if (issueComments.trim()) {
+      sections.push(`## Comments\n\n${issueComments}`);
+    }
+    sections.push(TASK_INSTRUCTIONS);
+
+    const branch = await createBranchFlow(branchName, undefined, {
+      command: "/gh-issue",
+      source: url,
+      body: sections.join("\n\n"),
+    });
+    await createSession({ repo: repo.name, branch: branch.name, issueUrl: url });
+    return branch;
+  }
+
+  async function createLinearBranch(url: string, userNote?: string): Promise<Branch> {
+    const m = url.match(/linear\.app\/[^/]+\/issue\/([A-Za-z]+-\d+)/);
+    if (!m) throw new Error("not a Linear issue URL");
+    const identifier = m[1];
+    const branchName = identifier.toLowerCase();
+
+    let ticketTitle = "";
+    let ticketBody = "";
+    const linearApiKey = process.env.LINEAR_API_KEY;
+    if (linearApiKey) {
+      try {
+        const query = JSON.stringify({
+          query: `{ issue(id: "${identifier}") { title description } }`,
+        });
+        const res = await run("curl", [
+          "-s", "-X", "POST",
+          "-H", "Content-Type: application/json",
+          "-H", `Authorization: ${linearApiKey}`,
+          "-d", query,
+          "https://api.linear.app/graphql",
+        ]);
+        if (res.code === 0) {
+          const data = JSON.parse(res.stdout);
+          ticketTitle = data?.data?.issue?.title ?? "";
+          ticketBody = data?.data?.issue?.description ?? "";
+        }
+      } catch {}
+    }
+
+    const sections: string[] = [];
+    if (userNote) sections.push(`## User note\n\n${userNote}`);
+    if (ticketTitle || ticketBody) {
+      sections.push(`## ${identifier}: ${ticketTitle}\n\n${ticketBody}`);
+    } else {
+      sections.push(`## Linear ticket: ${identifier}\n\nURL: ${url}\n\n(Set LINEAR_API_KEY to pre-fetch ticket content, or read it at the URL above.)`);
+    }
+    sections.push(TASK_INSTRUCTIONS);
+
+    const branch = await createBranchFlow(branchName, undefined, {
+      command: "/linear",
+      source: url,
+      body: sections.join("\n\n"),
+    });
+    const repo = getActiveRepo();
+    if (repo) await createSession({ repo: repo.name, branch: branch.name, linearUrl: url });
+    return branch;
+  }
+
+  async function createChatBranch(text: string): Promise<Branch> {
+    // Prefer a short LLM-generated name, fall back to a heuristic slug of
+    // the first few words when the API key is missing or the call fails.
+    let name = await generateBranchName(text).catch(() => null);
+    if (!name) name = slugify(firstNWords(text, 5)) || "chat";
+    name = uniqueBranchName(name);
+
+    const branch = await createBranchFlow(name, undefined, {
+      command: "/chat",
+      body: text,
+    });
+    const repo = getActiveRepo();
+    if (repo) await createSession({ repo: repo.name, branch: branch.name });
+    return branch;
+  }
+
+  async function handleFreeForm(
+    text: string,
+  ): Promise<{ kind: "chat" | "issue" | "linear"; branch: Branch }> {
+    const route = classifyFreeForm(text);
+    if (route.kind === "issue") {
+      return { kind: "issue", branch: await createGhIssueBranch(route.url, route.userNote) };
+    }
+    if (route.kind === "linear") {
+      return { kind: "linear", branch: await createLinearBranch(route.url, route.userNote) };
+    }
+    return { kind: "chat", branch: await createChatBranch(text) };
+  }
+
   app.post<{ Body: { name: string; base?: string } }>(
     "/api/branches",
     async (req, reply) => {
@@ -415,9 +551,20 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.post<{ Body: { command: string } }>("/api/commands", async (req, reply) => {
     const raw = (req.body?.command ?? "").trim();
+    if (!raw) return reply.code(400).send({ error: "empty command" });
+
+    // Free-form: anything not starting with "/" is a natural-language
+    // prompt. Auto-route pasted GH/Linear URLs, otherwise generate a
+    // short branch name with Haiku and hand the text to the sandbox as
+    // the task.
     if (!raw.startsWith("/")) {
-      return reply.code(400).send({ error: "command must start with /" });
+      try {
+        return await handleFreeForm(raw);
+      } catch (err: any) {
+        return reply.code(500).send({ error: err.message });
+      }
     }
+
     const [head, ...rest] = raw.slice(1).split(/\s+/);
     const verb = (head || "").toLowerCase();
 
@@ -440,63 +587,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (verb === "gh-issue") {
       const url = rest[0];
       if (!url) return reply.code(400).send({ error: "/gh-issue <url>" });
-      const m = url.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/);
-      const branchName = m ? `issue-${m[1]}` : `issue-${Date.now()}`;
-      const repo = getActiveRepo();
-      if (!repo) return reply.code(400).send({ error: "no active repo" });
-
-      // Pre-fetch issue content on the host (where gh is authenticated) so
-      // Claude inside the sandbox doesn't need gh CLI access.
-      let issueTitle = "";
-      let issueBody = "";
-      let issueComments = "";
       try {
-        const res = await run(
-          "gh",
-          ["issue", "view", url, "--json", "title,body,comments", "--jq",
-           '(.title) + "\\n---BODY---\\n" + (.body) + "\\n---COMMENTS---\\n" + ([.comments[] | "**" + .author.login + "**: " + .body] | join("\\n\\n"))'],
-          { cwd: repo.repoPath }
-        );
-        if (res.code === 0) {
-          const out = res.stdout.trim();
-          const bodyIdx = out.indexOf("\n---BODY---\n");
-          const commentsIdx = out.indexOf("\n---COMMENTS---\n");
-          if (bodyIdx >= 0 && commentsIdx >= 0) {
-            issueTitle = out.slice(0, bodyIdx);
-            issueBody = out.slice(bodyIdx + 12, commentsIdx);
-            issueComments = out.slice(commentsIdx + 16);
-          } else {
-            issueBody = out;
-          }
-        }
-      } catch {}
-
-      const sections: string[] = [];
-      if (issueTitle || issueBody) {
-        sections.push(`## Issue: ${issueTitle || url}\n\n${issueBody}`);
-      } else {
-        sections.push(`## Issue\n\nURL: ${url}\n\n(Could not pre-fetch issue content. Read the issue at the URL above.)`);
-      }
-      if (issueComments.trim()) {
-        sections.push(`## Comments\n\n${issueComments}`);
-      }
-      sections.push([
-        "## Instructions",
-        "",
-        "1. Read the issue and comments above carefully.",
-        "2. Plan the implementation — keep changes focused and minimal.",
-        "3. Implement the changes and verify with relevant tests.",
-        "4. Commit with a clear message.",
-        "5. Do NOT push or create PR — the orchestrator handles that from the host.",
-      ].join("\n"));
-
-      try {
-        const branch = await createBranchFlow(branchName, undefined, {
-          command: "/gh-issue",
-          source: url,
-          body: sections.join("\n\n"),
-        });
-        await createSession({ repo: repo.name, branch: branch.name, issueUrl: url });
+        const branch = await createGhIssueBranch(url);
         return { kind: "issue", branch };
       } catch (err: any) {
         return reply.code(500).send({ error: err.message });
@@ -506,60 +598,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     if (verb === "linear") {
       const url = rest[0];
       if (!url) return reply.code(400).send({ error: "/linear <url>" });
-      const m = url.match(/linear\.app\/[^/]+\/issue\/([A-Za-z]+-\d+)/);
-      if (!m) return reply.code(400).send({ error: "not a Linear issue URL" });
-      const identifier = m[1];
-      const branchName = identifier.toLowerCase();
-
-      // Pre-fetch Linear ticket via the API if LINEAR_API_KEY is set.
-      let ticketTitle = "";
-      let ticketBody = "";
-      const linearApiKey = process.env.LINEAR_API_KEY;
-      if (linearApiKey) {
-        try {
-          const query = JSON.stringify({
-            query: `{ issue(id: "${identifier}") { title description } }`,
-          });
-          const res = await run("curl", [
-            "-s",
-            "-X", "POST",
-            "-H", "Content-Type: application/json",
-            "-H", `Authorization: ${linearApiKey}`,
-            "-d", query,
-            "https://api.linear.app/graphql",
-          ]);
-          if (res.code === 0) {
-            const data = JSON.parse(res.stdout);
-            ticketTitle = data?.data?.issue?.title ?? "";
-            ticketBody = data?.data?.issue?.description ?? "";
-          }
-        } catch {}
-      }
-
-      const sections: string[] = [];
-      if (ticketTitle || ticketBody) {
-        sections.push(`## ${identifier}: ${ticketTitle}\n\n${ticketBody}`);
-      } else {
-        sections.push(`## Linear ticket: ${identifier}\n\nURL: ${url}\n\n(Set LINEAR_API_KEY to pre-fetch ticket content, or read it at the URL above.)`);
-      }
-      sections.push([
-        "## Instructions",
-        "",
-        "1. Read the ticket above carefully.",
-        "2. Plan the implementation — keep changes focused and minimal.",
-        "3. Implement the changes and verify with relevant tests.",
-        "4. Commit with a clear message.",
-        "5. Do NOT push or create PR — the orchestrator handles that from the host.",
-      ].join("\n"));
-
       try {
-        const branch = await createBranchFlow(branchName, undefined, {
-          command: "/linear",
-          source: url,
-          body: sections.join("\n\n"),
-        });
-        const repo = getActiveRepo();
-        if (repo) await createSession({ repo: repo.name, branch: branch.name, linearUrl: url });
+        const branch = await createLinearBranch(url);
         return { kind: "linear", branch };
       } catch (err: any) {
         return reply.code(500).send({ error: err.message });

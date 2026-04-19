@@ -62,15 +62,16 @@ export function CommandInput({
     const text = commandText.trim();
     if (!text || commandBusy) return;
 
-    if (!text.startsWith("/")) {
-      toaster.create({ type: "error", title: "Type / for commands", duration: 3000 });
-      return;
-    }
-
-    const error = validateCommand(text);
-    if (error) {
-      toaster.create({ type: "error", title: error, duration: 4000 });
-      return;
+    // Slash-prefixed input goes through the per-verb validator below.
+    // Anything else is a free-form prompt — the backend will generate a
+    // branch name (or auto-route if it's a GH/Linear URL) and hand the
+    // text to the sandboxed Claude as the task.
+    if (text.startsWith("/")) {
+      const error = validateCommand(text);
+      if (error) {
+        toaster.create({ type: "error", title: error, duration: 4000 });
+        return;
+      }
     }
     setCommandBusy(true);
     try {
@@ -143,7 +144,7 @@ export function CommandInput({
         <Input
           ref={inputRef as any}
           fontFamily="mono"
-          placeholder="Type / for commands"
+          placeholder="Describe a task, paste an issue URL, or type / for commands"
           value={commandText}
           onFocus={() => setCommandInputFocused(true)}
           onBlur={() => setCommandInputFocused(false)}

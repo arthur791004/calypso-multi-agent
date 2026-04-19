@@ -9,7 +9,7 @@ import { config } from "./config.js";
 
 export interface TaskEntry {
   type: "task";
-  command: "/gh-issue" | "/linear" | "/branch";
+  command: "/gh-issue" | "/linear" | "/branch" | "/chat";
   source?: string;
   body?: string;
   port?: number;
