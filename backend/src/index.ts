@@ -20,6 +20,7 @@ import { registerRoutes } from "./routes.js";
 import { registerTerminal } from "./terminal.js";
 import {
   ensureRepoSandbox,
+  markShuttingDown,
   reconcileSandboxState,
   runningBranchIds,
   sessionLastActivity,
@@ -228,6 +229,21 @@ function startIdleSandboxSweeper(log: { info: (msg: string) => void; error: (obj
   }, config.idleSweeperIntervalMs);
   interval.unref?.();
 }
+
+// Flip the sandbox shutdown flag on any graceful-exit signal so the PTY
+// `onExit` handlers don't mark still-running branches as stopped. Without
+// this, `tsx watch` reloads (and any SIGTERM from a process supervisor)
+// would leave every branch session stranded in `stopped` state across
+// restarts. We call `process.exit` ourselves because registering a signal
+// handler suppresses Node's default exit-on-signal behavior — omitting
+// the exit would block tsx-watch until it escalates to SIGKILL.
+for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.once(sig, () => {
+    markShuttingDown();
+    process.exit(0);
+  });
+}
+process.on("beforeExit", () => markShuttingDown());
 
 main().catch((err) => {
   console.error(err);

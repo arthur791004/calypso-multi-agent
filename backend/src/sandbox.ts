@@ -70,6 +70,18 @@ const sessions = new Map<string, SessionPty>();
 
 const SCROLLBACK_LIMIT = 100_000;
 
+// Flipped to true when the backend process is shutting down (SIGTERM /
+// SIGINT, typically a `tsx watch` reload). While it's set, the PTY
+// `onExit` handlers skip the "stopped" status update so rehydrate on the
+// next boot sees the branches still marked `running` and re-spawns them.
+// Otherwise every backend reload would leave the user's branches stranded
+// in `stopped` state and require a manual toggle to restart.
+let shuttingDown = false;
+
+export function markShuttingDown(): void {
+  shuttingDown = true;
+}
+
 export function runningBranchIds(): string[] {
   return [...sessions.keys()];
 }
@@ -553,6 +565,12 @@ export async function startBranchSession(
 
   term.onExit(() => {
     sessions.delete(branchId);
+    // When the whole backend is shutting down (tsx-watch reload, user
+    // Ctrl+C, etc.) don't mark the branch as stopped — the PTY is only
+    // dying because we are, and rehydrate on the next boot will spin it
+    // back up from the still-`running` state. Otherwise every restart
+    // would leave branches stranded.
+    if (shuttingDown) return;
     const branch = listAllBranches().find((b) => b.id === branchId);
     if (branch && branch.status === "running") {
       updateBranch(branch.id, { status: "stopped" }).catch(() => {});
