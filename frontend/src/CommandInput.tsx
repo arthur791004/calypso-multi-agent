@@ -4,18 +4,7 @@ import { Branch, Session, api } from "./api";
 import { TerminalKind } from "./TerminalModal";
 import { SendIcon } from "./Icons";
 import { toaster } from "./Toaster";
-
-const COMMAND_MENU: {
-  usage: string;
-  prefix: string;
-  desc: string;
-  /** Human-friendly label for the one-click chip row under the input. */
-  chip: string;
-}[] = [
-  { usage: "/gh-issue <url>", prefix: "/gh-issue ", desc: "Claude implements a GitHub issue", chip: "GitHub issue" },
-  { usage: "/linear <url>", prefix: "/linear ", desc: "Claude implements a Linear ticket", chip: "Linear ticket" },
-  { usage: "/branch <name> [base]", prefix: "/branch ", desc: "open any branch — new for a task, or existing to continue/test", chip: "Branch" },
-];
+import { COMMANDS, findCommand } from "./commands";
 
 interface Props {
   activeRepoId: string | undefined;
@@ -49,7 +38,7 @@ export function CommandInput({
   const commandMenuOpen =
     commandInputFocused && commandText.startsWith("/") && !commandText.includes(" ");
   const commandMenuItems = commandMenuOpen
-    ? COMMAND_MENU.filter((c) => c.prefix.trim().startsWith(commandText))
+    ? COMMANDS.filter((c) => c.verb.startsWith(commandText))
     : [];
   const clampedMenuIndex =
     commandMenuItems.length === 0
@@ -64,46 +53,9 @@ export function CommandInput({
   function validateCommand(text: string): string | null {
     if (!text.startsWith("/")) return null;
     const parts = text.split(/\s+/);
-    const verb = parts[0];
-    const known = ["/branch", "/gh-issue", "/linear"];
-    if (!known.includes(verb)) return `Unknown command: ${verb}`;
-    if (verb === "/branch") {
-      const name = parts[1];
-      if (!name) return "Usage: /branch <name> [base]";
-      if (branches.some((b) => !b.isTrunk && b.name === name)) {
-        return `Branch "${name}" already exists`;
-      }
-      return null;
-    }
-    if (verb === "/gh-issue") {
-      const url = parts[1];
-      if (!url) return "Usage: /gh-issue <url>";
-      const m = url.match(/github\.com\/[^/]+\/[^/]+\/issues\/(\d+)/);
-      if (!m) return "Not a GitHub issue URL";
-      if (sessions.some((s) => s.issueUrl === url && !s.completedAt)) {
-        return "Already running for this issue";
-      }
-      const derivedName = `issue-${m[1]}`;
-      if (branches.some((b) => !b.isTrunk && b.name === derivedName)) {
-        return `Branch "${derivedName}" already exists`;
-      }
-      return null;
-    }
-    if (verb === "/linear") {
-      const url = parts[1];
-      if (!url) return "Usage: /linear <url>";
-      const m = url.match(/linear\.app\/[^/]+\/issue\/([A-Za-z]+-\d+)/);
-      if (!m) return "Not a Linear issue URL";
-      if (sessions.some((s) => s.linearUrl === url && !s.completedAt)) {
-        return "Already running for this ticket";
-      }
-      const derivedName = m[1].toLowerCase();
-      if (branches.some((b) => !b.isTrunk && b.name === derivedName)) {
-        return `Branch "${derivedName}" already exists`;
-      }
-      return null;
-    }
-    return null;
+    const def = findCommand(parts[0]);
+    if (!def) return `Unknown command: ${parts[0]}`;
+    return def.validate(parts, { branches, sessions });
   }
 
   async function onRunCommand() {
@@ -258,7 +210,7 @@ export function CommandInput({
       </Box>
       {showPills && (
         <HStack gap={3} mt={6} justify="center" flexWrap="wrap">
-          {COMMAND_MENU.map((cmd) => (
+          {COMMANDS.map((cmd) => (
             <Tooltip.Root key={cmd.prefix} openDelay={300}>
               <Tooltip.Trigger asChild>
                 <Button

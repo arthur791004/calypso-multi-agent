@@ -14,6 +14,7 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { ShipyardIcon } from "./Icons";
+import { COMMANDS } from "./commands";
 import { api, SystemCheck } from "./api";
 import { toaster } from "./Toaster";
 
@@ -127,15 +128,11 @@ export function Welcome({ onDone }: Props) {
               workspace. Kick off several at once and check in on any of them from one window.
             </Text>
             <Stack gap={2} color="gray.400" fontSize="sm">
-              <BulletRow>
-                <Code>/gh-issue &lt;url&gt;</Code> — Claude implements a GitHub issue.
-              </BulletRow>
-              <BulletRow>
-                <Code>/linear &lt;url&gt;</Code> — Claude implements a Linear ticket.
-              </BulletRow>
-              <BulletRow>
-                <Code>/branch &lt;name&gt;</Code> — open any branch for a blank chat. New for a fresh task, existing to continue or test.
-              </BulletRow>
+              {COMMANDS.map((cmd) => (
+                <BulletRow key={cmd.verb}>
+                  <Code>{cmd.usage}</Code> — {cmd.desc}.
+                </BulletRow>
+              ))}
             </Stack>
             <Flex justify="flex-end" mt="auto">
               <Button colorPalette="blue" onClick={() => setStep(1)}>
