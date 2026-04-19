@@ -108,7 +108,7 @@ export function NewChatView({
         </HStack>
       </Flex>
       <Flex flex="1" direction="column" align="center" justify="center" px={4} w="100%" maxW="640px" mx="auto">
-        <Text fontSize="lg" color="gray.400" mb={6}>
+        <Text fontSize="2xl" color="gray.400" mb={6}>
           What would you like to work on?
         </Text>
         <CommandInput
