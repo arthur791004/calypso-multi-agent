@@ -24,7 +24,7 @@ import { useRepos, useBranches, useSessions, useDismissible } from "./hooks";
 const SIDEBAR_WIDTH = 260;
 
 export function App() {
-  const { repos, activeRepoId, settings, refreshRepos } = useRepos();
+  const { repos, activeRepoId, settings, refreshRepos, refreshSettings } = useRepos();
   const { branches, branchesLoaded, activeId, setActiveId, refresh, resetForRepoSwitch } = useBranches();
   const { sessions, refreshSessions } = useSessions();
 
@@ -480,6 +480,7 @@ export function App() {
         open={settingsDisclosure.open}
         activeRepo={repos.find((r) => r.id === activeRepoId) ?? null}
         firstRun={repos.length === 0}
+        settings={settings}
         onClose={settingsDisclosure.onClose}
         onAddRepo={async () => {
           await onAddRepo();
@@ -488,7 +489,32 @@ export function App() {
         onSaved={async () => {
           await refreshRepos();
         }}
+        onSettingsSaved={() => {
+          refreshSettings();
+        }}
       />
+
+      {settings?.pushDryRun && (
+        <Box
+          position="fixed"
+          top={2}
+          right={2}
+          zIndex={2000}
+          bg="orange.500"
+          color="black"
+          fontSize="xs"
+          fontWeight="bold"
+          letterSpacing="0.05em"
+          px={2.5}
+          py={1}
+          borderRadius="md"
+          boxShadow="md"
+          pointerEvents="none"
+          title="Pushes from the sandbox will NOT reach origin. Toggle in Settings."
+        >
+          DRY-RUN
+        </Box>
+      )}
     </Flex>
   );
 }

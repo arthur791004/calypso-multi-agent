@@ -37,6 +37,14 @@ export interface Repo {
 export interface Settings {
   repoUrl: string;
   configured: boolean;
+  /**
+   * When true, `POST /api/branches/:id/push` is forced into dry-run mode
+   * regardless of the request (the CLI's `--dry-run` flag or the
+   * `SHIPYARD_PUSH_DRYRUN` env var). Meant for testing the full
+   * "Claude builds + commits + pushes" flow without touching origin
+   * or creating real PRs. Toggled from the Settings modal.
+   */
+  pushDryRun?: boolean;
   // legacy fields kept optional for migration
   repoPath?: string;
   worktreesDir?: string;

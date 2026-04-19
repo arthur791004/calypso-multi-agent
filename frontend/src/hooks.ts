@@ -22,7 +22,13 @@ export function useRepos() {
     return res;
   }, []);
 
-  return { repos, activeRepoId, settings, refreshRepos };
+  const refreshSettings = useCallback(async () => {
+    const s = await api.getSettings();
+    setSettings(s);
+    return s;
+  }, []);
+
+  return { repos, activeRepoId, settings, refreshRepos, refreshSettings };
 }
 
 export function useBranches() {

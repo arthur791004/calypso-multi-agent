@@ -164,6 +164,22 @@ describe("POST /api/branches/:id/push", () => {
     expect(body.url).toMatch(/^dry-run:/);
   });
 
+  it("Settings.pushDryRun=true forces dry-run even without ?dryRun=1", async () => {
+    await state.updateSettings({ pushDryRun: true });
+    try {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/branches/${BRANCH_ID}/push`, // no dryRun query
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.dryRun).toBe(true);
+      expect(body.source).toBe("setting");
+    } finally {
+      await state.updateSettings({ pushDryRun: false });
+    }
+  });
+
   it("dry-run echoes back title + body when Claude provides them", async () => {
     const prBody = "## Proposed Changes\n\n* fix thing\n\n## Why\n\nbecause";
     const res = await app.inject({

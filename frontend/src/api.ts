@@ -35,6 +35,12 @@ export interface Settings {
   repoUrl: string;
   configured: boolean;
   maxConcurrentSandboxes?: number;
+  /**
+   * When on, every `shipyard:sandbox push` from the sandbox is silently
+   * routed through the backend's dry-run path — no git push, no PR
+   * created on origin. Toggled from the Settings modal.
+   */
+  pushDryRun?: boolean;
 }
 
 export interface Session {

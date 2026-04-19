@@ -118,7 +118,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.put<{ Body: Partial<{ repoUrl: string; configured: boolean }> }>(
+  app.put<{ Body: Partial<{ repoUrl: string; configured: boolean; pushDryRun: boolean }> }>(
     "/api/settings",
     async (req) => {
       return await updateSettings(req.body ?? {});
@@ -758,14 +758,19 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     const body = typeof req.body === "string" ? req.body : "";
 
     // Test/CI escape hatch: skip the real git/gh invocations and return a
-    // synthetic PR URL. Used by the push-flow test suite so we don't need
-    // real SSH/gh auth or a reachable remote.
-    if (req.query?.dryRun === "1") {
-      app.log.info(`[push:dry-run] branch=${branch.name} worktree=${branch.worktreePath} title=${title ? "set" : "unset"} body=${body ? body.length : 0}`);
+    // synthetic PR URL. Triggered either per-request (?dryRun=1 from the
+    // CLI's --dry-run / SHIPYARD_PUSH_DRYRUN env) or globally via the
+    // Settings.pushDryRun toggle — the latter lets devs test the full
+    // "Claude builds → commits → pushes" flow without touching origin.
+    const globalDryRun = getSettings().pushDryRun === true;
+    const dryRun = req.query?.dryRun === "1" || globalDryRun;
+    if (dryRun) {
+      app.log.info(`[push:dry-run] branch=${branch.name} worktree=${branch.worktreePath} title=${title ? "set" : "unset"} body=${body ? body.length : 0} source=${globalDryRun ? "global-setting" : "request"}`);
       return {
         url: `dry-run://branches/${branch.id}/pr`,
         created: false,
         dryRun: true,
+        source: globalDryRun ? "setting" : "request",
         title: title || undefined,
         body: body || undefined,
       };
