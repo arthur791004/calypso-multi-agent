@@ -59,7 +59,7 @@ async function replaceMarkedSection(
   await fsp.writeFile(claudeMdPath, cleaned + section, "utf8");
 }
 
-export async function injectSandboxRulesIntoClaudeMd(worktreePath: string): Promise<void> {
+export async function syncSandboxConfig(worktreePath: string): Promise<void> {
   const claudeMdPath = path.join(worktreePath, "CLAUDE.md");
   const section = [
     "",
@@ -86,7 +86,7 @@ export async function injectTaskIntoClaudeMd(
   slug: string
 ): Promise<void> {
   // Keep sandbox rules in sync whenever we touch CLAUDE.md for a task.
-  await injectSandboxRulesIntoClaudeMd(worktreePath);
+  await syncSandboxConfig(worktreePath);
 
   const claudeMdPath = path.join(worktreePath, "CLAUDE.md");
   const taskFile = taskFilePath(slug);

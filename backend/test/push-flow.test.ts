@@ -35,7 +35,7 @@ process.env.DATA_DIR = tmpDataDir;
 
 const state = await import("../src/state.js");
 const { registerRoutes } = await import("../src/routes.js");
-const { injectTaskIntoClaudeMd, injectSandboxRulesIntoClaudeMd, taskFilePath } = await import(
+const { injectTaskIntoClaudeMd, syncSandboxConfig, taskFilePath } = await import(
   "../src/tasks.js"
 );
 const { runOrThrow } = await import("../src/shell.js");
@@ -410,11 +410,11 @@ describe("shipyard:sandbox commit CLI", () => {
 
 // -------- Layer 3: CLAUDE.md injection guides Claude to the CLI --------
 
-describe("injectSandboxRulesIntoClaudeMd", () => {
+describe("syncSandboxConfig", () => {
   it("adds sandbox rules to a worktree with no CLAUDE.md", async () => {
     const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-rules-"));
     try {
-      await injectSandboxRulesIntoClaudeMd(worktree);
+      await syncSandboxConfig(worktree);
       const body = await fsp.readFile(path.join(worktree, "CLAUDE.md"), "utf8");
       expect(body).toMatch(/\*\*Commit\*\*: `shipyard:sandbox commit/);
       expect(body).toMatch(/\*\*Push\*\*: `shipyard:sandbox push`/);
@@ -429,8 +429,8 @@ describe("injectSandboxRulesIntoClaudeMd", () => {
     const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-rules-"));
     try {
       await fsp.writeFile(path.join(worktree, "CLAUDE.md"), "# my project\n\nsome notes\n");
-      await injectSandboxRulesIntoClaudeMd(worktree);
-      await injectSandboxRulesIntoClaudeMd(worktree);
+      await syncSandboxConfig(worktree);
+      await syncSandboxConfig(worktree);
       const body = await fsp.readFile(path.join(worktree, "CLAUDE.md"), "utf8");
       expect(body).toContain("# my project");
       expect(body).toContain("some notes");

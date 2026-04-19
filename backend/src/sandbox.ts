@@ -24,7 +24,7 @@ import pty, { IPty } from "node-pty";
 import { run, runOrThrow } from "./shell.js";
 import { config } from "./config.js";
 import { listAllBranches, updateBranch, Repo } from "./state.js";
-import { injectSandboxRulesIntoClaudeMd } from "./tasks.js";
+import { syncSandboxConfig } from "./tasks.js";
 
 // ---------------------------------------------------------------------------
 // Docker path resolution (reused from docker.ts)
@@ -464,8 +464,8 @@ export async function startBranchSession(
   // Keep the branch's CLAUDE.md in sync with the latest sandbox rules
   // (covers pre-existing branches whose CLAUDE.md was last written before
   // the shipyard:sandbox CLI existed). Non-fatal — claude still starts.
-  try { await injectSandboxRulesIntoClaudeMd(worktreePath); } catch (err) {
-    console.warn(`injectSandboxRulesIntoClaudeMd(${worktreePath}) failed:`, err);
+  try { await syncSandboxConfig(worktreePath); } catch (err) {
+    console.warn(`syncSandboxConfig(${worktreePath}) failed:`, err);
   }
 
   // Sync config for this worktree path
