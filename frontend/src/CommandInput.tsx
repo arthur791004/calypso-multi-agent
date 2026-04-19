@@ -5,10 +5,16 @@ import { TerminalKind } from "./TerminalModal";
 import { SendIcon } from "./Icons";
 import { toaster } from "./Toaster";
 
-const COMMAND_MENU: { usage: string; prefix: string; desc: string }[] = [
-  { usage: "/branch <name> [base]", prefix: "/branch ", desc: "open any branch — new for a task, or existing to continue/test" },
-  { usage: "/gh-issue <url>", prefix: "/gh-issue ", desc: "Claude implements a GitHub issue" },
-  { usage: "/linear <url>", prefix: "/linear ", desc: "Claude implements a Linear issue" },
+const COMMAND_MENU: {
+  usage: string;
+  prefix: string;
+  desc: string;
+  /** Human-friendly label for the one-click chip row under the input. */
+  chip: string;
+}[] = [
+  { usage: "/gh-issue <url>", prefix: "/gh-issue ", desc: "Claude implements a GitHub issue", chip: "Implement a GitHub issue" },
+  { usage: "/linear <url>", prefix: "/linear ", desc: "Claude implements a Linear ticket", chip: "Implement a Linear ticket" },
+  { usage: "/branch <name> [base]", prefix: "/branch ", desc: "open any branch — new for a task, or existing to continue/test", chip: "Open a branch" },
 ];
 
 interface Props {
@@ -252,24 +258,28 @@ export function CommandInput({
       </Box>
       {showPills && (
         <HStack gap={3} mt={6} justify="center" flexWrap="wrap">
-          {[
-            { label: "/gh-issue", prefix: "/gh-issue " },
-            { label: "/linear", prefix: "/linear " },
-            { label: "/branch", prefix: "/branch " },
-          ].map((cmd) => (
-            <Button
-              key={cmd.label}
-              size="sm"
-              variant="outline"
-              borderRadius="full"
-              fontSize="xs"
-              onClick={() => {
-                setCommandText(cmd.prefix);
-                inputRef.current?.focus();
-              }}
-            >
-              {cmd.label}
-            </Button>
+          {COMMAND_MENU.map((cmd) => (
+            <Tooltip.Root key={cmd.prefix} openDelay={300}>
+              <Tooltip.Trigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  borderRadius="full"
+                  fontSize="xs"
+                  onClick={() => {
+                    setCommandText(cmd.prefix);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  {cmd.chip}
+                </Button>
+              </Tooltip.Trigger>
+              <Portal>
+                <Tooltip.Positioner>
+                  <Tooltip.Content>{cmd.desc}</Tooltip.Content>
+                </Tooltip.Positioner>
+              </Portal>
+            </Tooltip.Root>
           ))}
         </HStack>
       )}
