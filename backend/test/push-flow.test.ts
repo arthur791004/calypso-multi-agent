@@ -403,14 +403,16 @@ describe("shipyard:sandbox commit CLI", () => {
 // -------- Layer 3: CLAUDE.md injection guides Claude to the CLI --------
 
 describe("injectTaskIntoClaudeMd", () => {
-  it("writes a Sandbox-rules section that points Claude at shipyard:sandbox for commits and pushes", async () => {
+  it("writes a Sandbox-rules section covering commit, push, and open-PR via shipyard:sandbox", async () => {
     const worktree = await fsp.mkdtemp(path.join(os.tmpdir(), "shipyard-cmd-"));
     try {
       await injectTaskIntoClaudeMd(worktree, "demo-slug");
       const body = await fsp.readFile(path.join(worktree, "CLAUDE.md"), "utf8");
-      expect(body).toMatch(/shipyard:sandbox commit/);
-      expect(body).toMatch(/shipyard:sandbox push/);
-      expect(body).toMatch(/Do NOT run `git commit` or `git push` directly/);
+      // All three actions Claude needs to know are explicitly named.
+      expect(body).toMatch(/\*\*Commit\*\*: `shipyard:sandbox commit/);
+      expect(body).toMatch(/\*\*Push\*\*: `shipyard:sandbox push`/);
+      expect(body).toMatch(/\*\*Open a PR\*\*/);
+      expect(body).toMatch(/Do NOT run `git commit`, `git push`, or `gh pr create` directly/);
       // Points Claude at the per-branch task history file.
       expect(body).toContain(taskFilePath("demo-slug"));
     } finally {
