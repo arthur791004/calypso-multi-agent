@@ -869,6 +869,24 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
+  // Look up the PR URL (if any) for this branch by asking gh. Returns
+  // { url: null } when the branch hasn't been pushed yet or there's no
+  // associated PR on the remote.
+  app.get<{ Params: { id: string } }>("/api/branches/:id/pr", async (req, reply) => {
+    const branch = getBranch(req.params.id);
+    if (!branch) return reply.code(404).send({ error: "not found" });
+    if (isTrunk(branch) || !branch.worktreePath) return { url: null };
+    try {
+      const res = await run("gh", ["pr", "view", "--json", "url", "--jq", ".url"], {
+        cwd: branch.worktreePath,
+      });
+      const url = res.code === 0 ? res.stdout.trim() : "";
+      return { url: url || null };
+    } catch {
+      return { url: null };
+    }
+  });
+
   // Pull latest changes from origin into the clone's default branch.
   app.post<{ Params: { id: string } }>("/api/repos/:id/sync", async (req, reply) => {
     const repo = getRepo(req.params.id);

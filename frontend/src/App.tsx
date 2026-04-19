@@ -130,6 +130,24 @@ export function App() {
     });
   }
 
+  async function onViewPr(b: Branch) {
+    try {
+      const res = await api.getPr(b.id);
+      if (res.url) {
+        window.open(res.url, "_blank");
+      } else {
+        toaster.create({
+          type: "info",
+          title: "No PR yet",
+          description: `Push this branch first (\`shipyard:sandbox push\`).`,
+          duration: 4000,
+        });
+      }
+    } catch (err: any) {
+      toaster.create({ type: "error", title: err?.message ?? "Could not look up PR", duration: 6000 });
+    }
+  }
+
   async function onRefreshSandbox(b: Branch, hard = false) {
     try {
       await api.refreshSandbox(b.id, hard);
@@ -454,6 +472,7 @@ export function App() {
           session={ctxMenu.session}
           onClose={() => setCtxMenu(null)}
           onPreview={onPreview}
+          onViewPr={onViewPr}
           onOpenEditor={onOpenEditor}
           onRefresh={(b) => onRefreshSandbox(b)}
           onHardRefresh={(b) => onRefreshSandbox(b, true)}
