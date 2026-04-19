@@ -163,6 +163,23 @@ describe("POST /api/branches/:id/push", () => {
     expect(body.created).toBe(false);
     expect(body.url).toMatch(/^dry-run:/);
   });
+
+  it("dry-run echoes back title + body when Claude provides them", async () => {
+    const prBody = "## Proposed Changes\n\n* fix thing\n\n## Why\n\nbecause";
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/branches/${BRANCH_ID}/push?dryRun=1`,
+      payload: prBody,
+      headers: {
+        "content-type": "text/plain",
+        "x-shipyard-title": "Fix the thing",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.title).toBe("Fix the thing");
+    expect(body.body).toBe(prBody);
+  });
 });
 
 describe("POST /api/branches/:id/commit", () => {
@@ -287,10 +304,13 @@ function runCli(
   return new Promise((resolve) => {
     const child = spawn(CLI_PATH, args, {
       env: { ...process.env, ...env },
+      // Close stdin so `push` (which reads from stdin when it's a pipe)
+      // gets EOF immediately instead of hanging.
+      stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "", stderr = "";
-    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+    child.stdout?.on("data", (d: Buffer) => (stdout += d.toString()));
+    child.stderr?.on("data", (d: Buffer) => (stderr += d.toString()));
     child.on("close", (code) => resolve({ code: code ?? 0, stdout, stderr }));
   });
 }
@@ -324,6 +344,44 @@ describe("shipyard:sandbox CLI", () => {
     const body = JSON.parse(stdout);
     expect(body.dryRun).toBe(true);
     expect(body.url).toMatch(/^dry-run:/);
+  });
+
+  it("push --title + stdin body passes both through to the backend", async () => {
+    const prBody = "Part of #123\n\n## Proposed Changes\n\n* something";
+    const out = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+      const child = spawn(
+        CLI_PATH,
+        ["push", "--title", "Descriptive title"],
+        {
+          env: {
+            ...process.env,
+            SHIPYARD_BRANCH_ID: BRANCH_ID,
+            SHIPYARD_BACKEND_URL: `http://127.0.0.1:${port}`,
+            SHIPYARD_PUSH_DRYRUN: "1",
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
+      let stdout = "", stderr = "";
+      child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      child.on("close", (code) => resolve({ code: code ?? 0, stdout, stderr }));
+      child.stdin.write(prBody);
+      child.stdin.end();
+    });
+    expect(out.code, `stderr=${out.stderr}`).toBe(0);
+    const resp = JSON.parse(out.stdout);
+    expect(resp.title).toBe("Descriptive title");
+    expect(resp.body).toBe(prBody);
+  });
+
+  it("push --title without a -m value errors out", async () => {
+    const { code, stderr } = await runCli(["push", "--title"], {
+      SHIPYARD_BRANCH_ID: BRANCH_ID,
+      SHIPYARD_BACKEND_URL: `http://127.0.0.1:${port}`,
+    });
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/--title requires an argument/);
   });
 
   it("surfaces backend 404 as a non-zero exit", async () => {

@@ -15,7 +15,11 @@ usage: shipyard:sandbox <command> [args]
 commands:
   commit -m <msg> [--amend]   stage all changes and commit on the host
   commit --amend              amend the previous commit without changing its message
-  push                        push the current branch and create/update its PR
+  push                        push the current branch and update its PR (fills body
+                              from the most recent commit if no --title/stdin body)
+  push --title "TITLE"        set the PR title; if stdin has content it's used as
+                              the PR body. Used when opening a NEW PR so the body
+                              follows the repo's .github/pull_request_template.md.
 EOF
   exit 2
 }
@@ -66,14 +70,43 @@ case "$cmd" in
       -H "Content-Type: text/plain" --data-binary @- "$url"
     ;;
   push)
+    title=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --title)
+          [ $# -lt 2 ] && { echo "error: --title requires an argument" >&2; exit 2; }
+          title="$2"; shift 2 ;;
+        *)
+          echo "error: unknown arg: $1" >&2; usage ;;
+      esac
+    done
+
     url="$BACKEND/api/branches/$BRANCH/push"
     # Test/CI escape hatch — tells backend to skip the real git/gh calls.
     if [ "${SHIPYARD_PUSH_DRYRUN:-}" = "1" ]; then
       url="$url?dryRun=1"
     fi
-    # No body is sent, so don't set Content-Type (Fastify's JSON parser
-    # rejects an empty body when content-type is application/json).
-    exec curl -sS --fail-with-body -X POST "$url"
+
+    # Read PR body from stdin iff stdin is a pipe/file (not a terminal).
+    # Claude's Bash tool always invokes us with a non-TTY stdin, so an
+    # empty pipe gives us an empty body immediately.
+    body=""
+    if [ ! -t 0 ]; then
+      body=$(cat)
+    fi
+
+    if [ -n "$body" ] || [ -n "$title" ]; then
+      # Send title as header, body as text/plain. Either may be empty;
+      # backend uses `gh pr create --title/--body` iff both are provided,
+      # otherwise falls back to --fill.
+      args=(-sS --fail-with-body -X POST -H "Content-Type: text/plain" --data-binary @-)
+      [ -n "$title" ] && args+=(-H "X-Shipyard-Title: $title")
+      printf '%s' "$body" | curl "${args[@]}" "$url"
+    else
+      # No title, no body — plain POST. Skip Content-Type so Fastify's
+      # JSON parser doesn't reject an empty body.
+      exec curl -sS --fail-with-body -X POST "$url"
+    fi
     ;;
   *)
     usage

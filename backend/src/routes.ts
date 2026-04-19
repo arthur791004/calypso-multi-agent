@@ -699,21 +699,35 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post<{ Params: { id: string }; Querystring: { dryRun?: string } }>("/api/branches/:id/push", async (req, reply) => {
+  app.post<{
+    Params: { id: string };
+    Querystring: { dryRun?: string };
+    Body: string;
+  }>("/api/branches/:id/push", async (req, reply) => {
     const branch = getBranch(req.params.id);
     if (!branch) return reply.code(404).send({ error: "not found" });
     if (isTrunk(branch)) return reply.code(400).send({ error: "cannot push trunk" });
     if (!branch.worktreePath) return reply.code(400).send({ error: "no worktree" });
 
+    // Title for the PR is passed as an HTTP header (ASCII-safe). Body is
+    // the request's text/plain body. Either can be empty — when both are
+    // provided we create the PR with exactly those; otherwise we fall
+    // back to `gh pr create --fill` (title/body derived from the commit).
+    const titleHeader = req.headers["x-shipyard-title"];
+    const title = (Array.isArray(titleHeader) ? titleHeader[0] : titleHeader)?.toString().trim() ?? "";
+    const body = typeof req.body === "string" ? req.body : "";
+
     // Test/CI escape hatch: skip the real git/gh invocations and return a
     // synthetic PR URL. Used by the push-flow test suite so we don't need
     // real SSH/gh auth or a reachable remote.
     if (req.query?.dryRun === "1") {
-      app.log.info(`[push:dry-run] branch=${branch.name} worktree=${branch.worktreePath}`);
+      app.log.info(`[push:dry-run] branch=${branch.name} worktree=${branch.worktreePath} title=${title ? "set" : "unset"} body=${body ? body.length : 0}`);
       return {
         url: `dry-run://branches/${branch.id}/pr`,
         created: false,
         dryRun: true,
+        title: title || undefined,
+        body: body || undefined,
       };
     }
 
@@ -734,12 +748,15 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return { url: existing.stdout.trim(), created: false };
     }
 
-    // Create a new PR with auto-filled title/body from commits.
+    // Create a new PR. If Claude provided both title + body (following the
+    // repo's PR template), use them. Otherwise fall back to --fill (title
+    // and body from the commit message).
+    const createArgs = title && body
+      ? ["pr", "create", "--title", title, "--body", body]
+      : ["pr", "create", "--fill"];
     try {
       const url = (
-        await runOrThrow("gh", ["pr", "create", "--fill"], {
-          cwd: branch.worktreePath,
-        })
+        await runOrThrow("gh", createArgs, { cwd: branch.worktreePath })
       ).trim();
       return { url, created: true };
     } catch (err: any) {
