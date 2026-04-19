@@ -745,7 +745,23 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       cwd: branch.worktreePath,
     });
     if (existing.code === 0 && existing.stdout.trim()) {
-      return { url: existing.stdout.trim(), created: false };
+      const url = existing.stdout.trim();
+      // If Claude passed a fresh title + body, update the existing PR so
+      // its description reflects the latest state of the branch. A bare
+      // `shipyard:sandbox push` (no title, no body) leaves the PR body
+      // untouched, which is the right default when you just want to push
+      // new commits without rewriting the description.
+      if (title && body) {
+        try {
+          await runOrThrow("gh", ["pr", "edit", "--title", title, "--body", body], {
+            cwd: branch.worktreePath,
+          });
+          return { url, created: false, updated: true };
+        } catch (err: any) {
+          return reply.code(500).send({ error: `gh pr edit failed: ${err.message}` });
+        }
+      }
+      return { url, created: false };
     }
 
     // Create a new PR. If Claude provided both title + body (following the
