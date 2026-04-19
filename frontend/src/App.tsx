@@ -130,6 +130,20 @@ export function App() {
     });
   }
 
+  async function onTestPush(b: Branch) {
+    try {
+      const res = await api.testPush(b.id);
+      toaster.create({
+        type: "info",
+        title: "Push dry-run OK",
+        description: `Would ${res.updated ? "update" : res.created ? "create" : "link"} PR → ${res.url}`,
+        duration: 8000,
+      });
+    } catch (err: any) {
+      toaster.create({ type: "error", title: err?.message ?? "Dry-run failed", duration: 6000 });
+    }
+  }
+
   async function onRefreshSandbox(b: Branch, hard = false) {
     try {
       await api.refreshSandbox(b.id, hard);
@@ -454,6 +468,7 @@ export function App() {
           session={ctxMenu.session}
           onClose={() => setCtxMenu(null)}
           onPreview={onPreview}
+          onTestPush={onTestPush}
           onOpenEditor={onOpenEditor}
           onRefresh={(b) => onRefreshSandbox(b)}
           onHardRefresh={(b) => onRefreshSandbox(b, true)}

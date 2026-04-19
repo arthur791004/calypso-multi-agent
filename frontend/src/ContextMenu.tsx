@@ -9,6 +9,7 @@ interface Props {
   session?: Session;
   onClose: () => void;
   onPreview: (b: Branch) => void;
+  onTestPush: (b: Branch) => void;
   onOpenEditor: (b: Branch) => void;
   onRefresh: (b: Branch) => void;
   onHardRefresh: (b: Branch) => void;
@@ -22,6 +23,7 @@ export function ContextMenu({
   session,
   onClose,
   onPreview,
+  onTestPush,
   onOpenEditor,
   onRefresh,
   onHardRefresh,
@@ -132,6 +134,23 @@ export function ContextMenu({
         >
           Open in editor
         </Button>
+        {!branch.isTrunk && (
+          <Button
+            w="100%"
+            size="sm"
+            variant="ghost"
+            justifyContent="flex-start"
+            borderRadius={0}
+            _hover={{ bg: "gray.800" }}
+            disabled={!branch.worktreePath}
+            onClick={() => {
+              onClose();
+              onTestPush(branch);
+            }}
+          >
+            Test push (dry-run)
+          </Button>
+        )}
 
         {/* Reload group */}
         {!branch.isTrunk && (
