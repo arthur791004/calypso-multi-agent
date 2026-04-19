@@ -501,7 +501,7 @@ export function App() {
       {settings?.pushDryRun && (
         <Box
           position="fixed"
-          top={2}
+          bottom={2}
           right={2}
           zIndex={2000}
           bg="orange.500"
