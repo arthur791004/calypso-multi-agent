@@ -133,10 +133,6 @@ export const api = {
     fetch(`/api/branches/${encodeURIComponent(id)}/logs`).then(j<{ logs: string }>),
   remove: (id: string) =>
     fetch(`/api/branches/${encodeURIComponent(id)}`, { method: "DELETE" }).then(j<{ ok: true }>),
-  testPush: (id: string) =>
-    fetch(`/api/branches/${encodeURIComponent(id)}/push?dryRun=1`, { method: "POST" }).then(
-      j<{ url: string; created: boolean; dryRun?: boolean; updated?: boolean }>
-    ),
   syncRepo: (id: string) =>
     fetch(`/api/repos/${id}/sync`, { method: "POST" }).then(j<{ ok: true }>),
   sessions: () => fetch("/api/sessions").then(j<{ sessions: Session[] }>),
