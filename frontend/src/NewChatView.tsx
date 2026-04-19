@@ -108,7 +108,14 @@ export function NewChatView({
         </HStack>
       </Flex>
       <Flex flex="1" direction="column" align="center" justify="center" px={4} w="100%" maxW="640px" mx="auto">
-        <Text fontSize="2xl" color="gray.400" mb={6}>
+        <Text
+          fontSize={{ base: "3xl", md: "5xl" }}
+          fontWeight="semibold"
+          letterSpacing="-0.02em"
+          color="gray.200"
+          mb={8}
+          textAlign="center"
+        >
           What would you like to work on?
         </Text>
         <CommandInput
