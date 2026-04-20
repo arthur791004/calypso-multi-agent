@@ -23,6 +23,7 @@ import path from "node:path";
 import pty, { IPty } from "node-pty";
 import { run, runOrThrow } from "./shell.js";
 import { config } from "./config.js";
+import { ensureTrunkSharedResources } from "./worktree.js";
 import { listAllBranches, updateBranch, Repo } from "./state.js";
 
 // ---------------------------------------------------------------------------
@@ -548,6 +549,9 @@ export async function startBranchSession(
 
   // Sync config for this worktree path
   try { await syncClaudeConfigIn(sandboxName, worktreePath); } catch {}
+  // Backfill husky/node_modules sharing for pre-existing worktrees that
+  // were created before we started symlinking these in.
+  try { await ensureTrunkSharedResources(worktreePath); } catch {}
 
   const dockerPath = resolveDockerPath();
   const execArgs = ["sandbox", "exec", "-it", "-w", worktreePath];

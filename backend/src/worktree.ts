@@ -100,6 +100,12 @@ export async function createWorktree(folderName: string, branch: string, base?: 
 // directory" when they `source .husky/_/husky.sh`. Symlink trunk's copy in
 // so the hooks actually run. Same helper files, same contents across any
 // worktree — sharing via symlink is safe and self-updating.
+export async function ensureTrunkSharedResources(worktreePath: string): Promise<void> {
+  const repo = getActiveRepo();
+  if (!repo) return;
+  await shareTrunkHuskyHelpers(repo.repoPath, worktreePath);
+}
+
 async function shareTrunkHuskyHelpers(repoPath: string, worktreePath: string): Promise<void> {
   const trunkHelpers = path.join(repoPath, ".husky", "_");
   const worktreeHelpers = path.join(worktreePath, ".husky", "_");
@@ -112,6 +118,25 @@ async function shareTrunkHuskyHelpers(repoPath: string, worktreePath: string): P
     // Non-fatal — if the symlink can't be created (filesystem quirks,
     // permissions, whatever), the user will still see the original husky
     // error and can diagnose from there.
+  }
+  await shareTrunkNodeModules(repoPath, worktreePath);
+}
+
+// Worktrees skip `yarn install` to share trunk's install — but yarn/husky
+// hooks that `exec yarn ...` during pre-commit still look for `node_modules`
+// (and, under yarn berry, `.yarn/`) in the worktree. Symlink them from trunk
+// so install state is visible from the worktree CWD.
+async function shareTrunkNodeModules(repoPath: string, worktreePath: string): Promise<void> {
+  for (const entry of ["node_modules", ".yarn", ".pnp.cjs", ".pnp.loader.mjs"]) {
+    const src = path.join(repoPath, entry);
+    const dst = path.join(worktreePath, entry);
+    if (!(await exists(src))) continue;
+    if (await exists(dst)) continue;
+    try {
+      await fs.symlink(src, dst);
+    } catch {
+      // Non-fatal; see shareTrunkHuskyHelpers.
+    }
   }
 }
 

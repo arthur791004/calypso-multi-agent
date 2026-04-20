@@ -27,7 +27,7 @@ import {
   upsertBranch,
   DEFAULT_DASHBOARD_INSTALL_CMD,
 } from "./state.js";
-import { createWorktree, deleteBranch as deleteGitBranch, detectDefaultBranch, listGitBranches, removeWorktree } from "./worktree.js";
+import { createWorktree, deleteBranch as deleteGitBranch, detectDefaultBranch, ensureTrunkSharedResources, listGitBranches, removeWorktree } from "./worktree.js";
 import { run, runOrThrow } from "./shell.js";
 import {
   ensureRepoSandbox,
@@ -841,6 +841,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       if (!amend && !message) {
         return reply.code(400).send({ error: "commit message required" });
       }
+
+      try { await ensureTrunkSharedResources(branch.worktreePath); } catch {}
 
       try {
         await runOrThrow("git", ["add", "-A"], { cwd: branch.worktreePath });
